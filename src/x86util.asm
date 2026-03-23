@@ -17,6 +17,7 @@
 ;     asm_memset    - fill a memory region with a value
 ;     asm_memset_s  - asm_memset with size cap (safe version)
 ;     asm_memcpy    - copy a memory region (no overlap)
+;     asm_memcpy_s  - asm_memcpy with size cap (safe version | no overlap)
 ;     asm_memmove   - copy a memory region (overlap safe)
 ;     asm_strcmp    - compare two strings
 ;     asm_strcpy    - copy a string into a buffer
@@ -39,6 +40,8 @@ global SYM(asm_strlen_s)
 global SYM(asm_strlen)
 global SYM(asm_memset_s)
 global SYM(asm_memset)
+global SYM(asm_memcpy_s)
+global SYM(asm_memcpy)
 
 %define INT32_MAX 0x7FFFFFFF
 
@@ -47,10 +50,10 @@ section .text
 ; --------------------------------------------------------
 ; asm_strlen_s
 ;   purpose: returns the length of a null terminated string
-;   input:   [ebp+8]  string buffer pointer (4 bytes)
+;   input:   [ebp+8]  string buffer address (4 bytes)
 ;            [ebp+12] max string length     (4 bytes)
 ;   output:  eax = string length on success
-;            eax = -1 on failure (null pointer, invalid or
+;            eax = -1 on failure (null address, invalid or
 ;                  exceeded max length without null found)
 ;   trashes: ecx, edx
 ;   saves:   esi, edi
@@ -62,7 +65,7 @@ SYM(asm_strlen_s):
     push    edi                 ; save callee saved [ebp-8]
     sub     esp, 8              ; local var [ebp-12] + 4 bytes padding
 
-    mov     esi, [ebp+8]        ; load string buffer pointer
+    mov     esi, [ebp+8]        ; load string buffer address
     mov     ecx, [ebp+12]       ; load max string length
 
     ; check if max length exceeds INT32_MAX
@@ -71,15 +74,15 @@ SYM(asm_strlen_s):
 
     ; check if max length is zero, fallback to INT32_MAX
     test    ecx, ecx
-    jnz     .validate_ptr
+    jnz     .validate_addr
     mov     ecx, INT32_MAX
 
-.validate_ptr:
-    ; check if pointer is NULL
+.validate_addr:
+    ; check if address is NULL
     test    esi, esi
     jz      .fail
 
-    mov     edi, esi            ; save original pointer for length calculation
+    mov     edi, esi            ; save original address for length calculation
 
     test    esi, 3
     jz      .pre_body           ; already aligned, skip head entirely
@@ -96,10 +99,10 @@ SYM(asm_strlen_s):
     jmp     .unaligned
 
 .pre_body:
-    mov     dword [ebp-12], ecx ; save full count first
+    mov     dword [ebp-12], ecx ; save full count
+    and     dword [ebp-12], 3   ; keep bottom 2 bits
     cmp     ecx, 4
     jl      .pre_tail           ; less than 4 bytes left, skip dword loop
-    and     dword [ebp-12], 3   ; keep bottom 2 bits = remainder
     shr     ecx, 2              ; convert to dword count
 
     ; process aligned dwords using bitmask null detection
@@ -138,7 +141,7 @@ SYM(asm_strlen_s):
 
 .done:
     mov     eax, esi
-    sub     eax, edi            ; length = current pointer - original pointer
+    sub     eax, edi            ; length = current address - original address
     lea     esp, [ebp-8]
     pop     edi
     pop     esi
@@ -156,17 +159,17 @@ SYM(asm_strlen_s):
 ; --------------------------------------------------------
 ; asm_strlen
 ;   purpose: thin wrapper around asm_strlen_s with no limit
-;   input:   [ebp+8]  string buffer pointer (4 bytes)
+;   input:   [ebp+8]  string buffer address (4 bytes)
 ;   output:  eax = string length on success
-;            eax = -1 on failure (null pointer, invalid or
+;            eax = -1 on failure (null address, invalid or
 ;                  exceeded max length without null found)
 ;   trashes: ecx, edx
 ;   saves:   esi, edi
 ; --------------------------------------------------------
 SYM(asm_strlen):
-    mov     eax, [esp+4]        ; ptr
+    mov     eax, [esp+4]        ; addr
     push    dword INT32_MAX     ; max limit
-    push    eax                 ; ptr
+    push    eax                 ; addr
     call    SYM(asm_strlen_s)
     add     esp, 8
     ret
@@ -175,7 +178,7 @@ SYM(asm_strlen):
 ; asm_memset_s
 ; --------------------------------------------------------
 ;   purpose: fills a memory object with a given byte value,
-;            with bounds checking and null pointer validation
+;            with bounds checking and null address validation
 ;   input:   [ebp+8]  address to the object to fill  (4 bytes)
 ;            [ebp+12] object size                    (4 bytes)
 ;            [ebp+16] fill byte                      (4 bytes)
@@ -192,32 +195,32 @@ SYM(asm_memset_s):
     push    edi                 ; save callee saved [ebp-8]
     sub     esp, 8              ; local var [ebp-12] + 4 bytes padding
 
-    mov     esi, [ebp+8]        ; load object pointer
+    mov     esi, [ebp+8]        ; load object address
     mov     eax, [ebp+12]       ; load object size
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if string length and counter exceeds INT32_MAX
+    ; check if object size and counter exceeds INT32_MAX
     cmp     eax, INT32_MAX
     ja      .fail
     cmp     ecx, INT32_MAX
     ja      .fail
 
-    ; check if string length is zero
+    ; check if object size is zero
     test    eax, eax
     jz      .fail
 
-    ; check if counter is longer than the string length
+    ; check if counter is longer than object size
     cmp     eax, ecx
     jl      .fail
 
     ; reset eax with the char to set with
     mov     eax, [ebp+16]
 
-    ; check if pointer is NULL
+    ; check if address is NULL
     test    esi, esi
     jz      .fail
 
-    mov     edi, esi            ; save original pointer
+    mov     edi, esi            ; save original address
 
     test    esi, 3
     jz      .pre_body           ; already aligned, skip head entirely
@@ -233,16 +236,16 @@ SYM(asm_memset_s):
     jmp     .unaligned
 
 .pre_body:
-    mov     dword [ebp-12], ecx ; save full count first
+    mov     dword [ebp-12], ecx ; save full count
+    and     dword [ebp-12], 3   ; keep bottom 2 bits
     cmp     ecx, 4
     jl      .pre_tail           ; less than 4 bytes left, skip dword loop
-    and     dword [ebp-12], 3   ; keep bottom 2 bits = remainder
     shr     ecx, 2              ; convert to dword count
     imul    eax, 0x01010101     ; broadcast fill byte
 
     ; process aligned dwords using broadcast bitmask
 .body:
-    mov     dword [esi], eax    ; set broadcasted byte
+    mov     dword [esi], eax    ; set broadcasted dword
     add     esi, 4
     dec     ecx
     jnz     .body
@@ -260,7 +263,7 @@ SYM(asm_memset_s):
     jmp     .tail
 
 .done:
-    mov     eax, edi            ; return the orginal pointer
+    mov     eax, edi            ; return the orginal address
 
     lea     esp, [ebp-8]
     pop     edi
@@ -280,8 +283,8 @@ SYM(asm_memset_s):
 ; --------------------------------------------------------
 ; asm_memset
 ; --------------------------------------------------------
-;   purpose: fills a memory object with a given byte value
-;            and null pointer validation
+;   purpose: fills a memory object with a given byte value,
+;            with null address validation
 ;   input:   [ebp+8]  address to the object to fill  (4 bytes)
 ;            [ebp+12] fill byte                      (4 bytes)
 ;            [ebp+16] number of bytes to fill        (4 bytes)
@@ -291,13 +294,134 @@ SYM(asm_memset_s):
 ;   saves:   esi, edi
 ; --------------------------------------------------------
 SYM(asm_memset):
-    mov     eax, [esp+4]        ; ptr
+    mov     eax, [esp+4]        ; addr
     mov     ecx, [esp+8]        ; fill byte
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; fill byte
     push    dword INT32_MAX     ; smax
-    push    eax                 ; ptr
+    push    eax                 ; addr
     call    SYM(asm_memset_s)
+    add     esp, 16
+    ret
+
+; --------------------------------------------------------
+; asm_memcpy_s
+; --------------------------------------------------------
+;   purpose: copy n bytes from one memory object to another,
+;            with bounds checking and null address validation
+;   input:   [ebp+8]  address of destination object     (4 bytes)
+;            [ebp+12] destination object size           (4 bytes)
+;            [ebp+16] address of source object          (4 bytes)
+;            [ebp+20] number of bytes to copy           (4 bytes)
+;   output:  eax = original destination object address
+;            eax = -1 on failure
+;   trashes: ecx
+;   saves:   esi, edi
+; --------------------------------------------------------
+SYM(asm_memcpy_s):
+    push    ebp
+    mov     ebp, esp
+    push    esi                 ; save callee saved [ebp-4]
+    push    edi                 ; save callee saved [ebp-8]
+    sub     esp, 8              ; local var [ebp-12] + [ebp-16]
+
+    mov     edi, [ebp+8]        ; load dest object address
+    mov     eax, [ebp+12]       ; load dest object size
+    mov     esi, [ebp+16]       ; load src object address
+    mov     ecx, [ebp+20]       ; load counter
+
+    ; check if dest object size and counter exceeds INT32_MAX
+    cmp     eax, INT32_MAX
+    ja      .fail
+    cmp     ecx, INT32_MAX
+    ja      .fail
+
+    ; check if dest object size is zero
+    test    eax, eax
+    jz      .fail
+
+    ; check if counter is longer than dest object size
+    cmp     eax, ecx
+    jl      .fail
+
+    ; check if dest and src addresses are NULL
+    test    edi, edi
+    jz      .fail
+    test    esi, esi
+    jz      .fail
+
+    mov     dword [ebp-16], edi ; save dest original address
+
+    cld                         ; make sure direction flag is set to forward
+
+    test    edi, 3
+    jz      .body               ; already aligned, skip head entirely
+
+    ; process unaligned head bytes one at a time
+.unaligned_dst:
+    movsb                       ; copy 1 byte [esi] -> [edi], advance both
+    dec     ecx
+    jz      .done               ; proccessed the whole counter
+    test    edi, 3              ; check if aligned now
+    jz      .body
+    jmp     .unaligned_dst
+
+.body:
+    mov     dword [ebp-12], ecx ; save full count
+    and     dword [ebp-12], 3   ; keep bottom 2 bits
+    cmp     ecx, 4
+    jl      .tail               ; less than 4 bytes left, skip dword loop
+    shr     ecx, 2              ; convert to dword count
+
+    ; bulk copy aligned dwords
+    rep     movsd               ; copy ecx dwords [esi] -> [edi], advances both
+
+.tail:
+    mov     ecx, [ebp-12]       ; load remainder byte count
+    test    ecx, ecx
+    jz      .done               ; nothing left
+    rep     movsb               ; copy remaining bytes [esi] -> [edi]
+
+.done:
+    mov     eax, [ebp-16]       ; return the orginal dest address
+
+    lea     esp, [ebp-8]
+    pop     edi
+    pop     esi
+    pop     ebp
+    ret
+
+.fail:
+    mov     eax, -1
+
+    lea     esp, [ebp-8]
+    pop     edi
+    pop     esi
+    pop     ebp
+    ret
+
+; --------------------------------------------------------
+; asm_memcpy
+; --------------------------------------------------------
+;   purpose: copy n bytes from one memory object to another,
+;            with null address validation
+;   input:   [ebp+8]  address of destination object     (4 bytes)
+;            [ebp+12] address of source object          (4 bytes)
+;            [ebp+16] number of bytes to copy           (4 bytes)
+;   output:  eax = original destination object address
+;            eax = -1 on failure
+;   trashes: ecx
+;   saves:   esi, edi
+; --------------------------------------------------------
+SYM(asm_memcpy):
+    mov     eax, [esp+4]        ; dest addr
+    mov     ecx, [esp+8]        ; src addr
+    mov     edx, [esp+12]       ; n
+    push    edx                 ; n
+    push    ecx                 ; src addr
+    push    dword INT32_MAX     ; smax
+    push    eax                 ; dest addr
+    call    SYM(asm_memcpy_s)
     add     esp, 16
     ret
