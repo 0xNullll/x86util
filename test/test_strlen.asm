@@ -27,11 +27,12 @@ extern SYM(asm_strlen_s)
 
 section .data
     str_hello   db "hello", 0
-    str_empty   db 0
-    str_long    db "hello world", 0
-
     str_hello_len   equ $ - str_hello - 1       ; 5
+
+    str_empty   db 0
     str_empty_len   equ $ - str_empty - 1       ; 0
+
+    str_long    db "hello world", 0
     str_long_len    equ $ - str_long  - 1       ; 11
 
 section .text
