@@ -19,8 +19,11 @@
 ;     asm_memcpy    - copy a memory region (no overlap)
 ;     asm_memcpy_s  - asm_memcpy with size cap (safe version | no overlap)
 ;     asm_memmove   - copy a memory region (overlap safe)
+;     asm_memmove_s - asm_memmove with size cap (safe version | overlap safe)
 ;     asm_strcmp    - compare two strings
+;     asm_strcmp_s  - asm_strcmp with size cap (safe version)
 ;     asm_strcpy    - copy a string into a buffer
+;     asm_strcpy_s  - asm_strcpy with size cap (safe version)
 ; ============================================================
 
 BITS 32
@@ -42,6 +45,8 @@ global SYM(asm_memset_s)
 global SYM(asm_memset)
 global SYM(asm_memcpy_s)
 global SYM(asm_memcpy)
+global SYM(asm_memmove_s)
+global SYM(asm_memmove)
 
 %define INT32_MAX 0x7FFFFFFF
 
@@ -423,5 +428,151 @@ SYM(asm_memcpy):
     push    dword INT32_MAX     ; smax
     push    eax                 ; dest addr
     call    SYM(asm_memcpy_s)
+    add     esp, 16
+    ret
+
+; --------------------------------------------------------
+; asm_memmove_s
+; --------------------------------------------------------
+;   purpose: copy n bytes from one memory object to another,
+;            overlap safe, with bounds checking and null
+;            address validation
+;   input:   [ebp+8]  address of destination object     (4 bytes)
+;            [ebp+12] destination object size           (4 bytes)
+;            [ebp+16] address of source object          (4 bytes)
+;            [ebp+20] number of bytes to copy           (4 bytes)
+;   output:  eax = original destination object address
+;            eax = -1 on failure
+;   trashes: ecx
+;   saves:   esi, edi
+; --------------------------------------------------------
+SYM(asm_memmove_s):
+    push    ebp
+    mov     ebp, esp
+    push    esi                 ; save callee saved [ebp-4]
+    push    edi                 ; save callee saved [ebp-8]
+    sub     esp, 8              ; local var [ebp-12] + [ebp-16]
+
+    mov     edi, [ebp+8]        ; load dest object address
+    mov     eax, [ebp+12]       ; load dest object size
+    mov     esi, [ebp+16]       ; load src object address
+    mov     ecx, [ebp+20]       ; load counter
+
+    ; check if dest object size and counter exceeds INT32_MAX
+    cmp     eax, INT32_MAX
+    ja      .fail
+    cmp     ecx, INT32_MAX
+    ja      .fail
+
+    ; check if dest object size is zero
+    test    eax, eax
+    jz      .fail
+
+    ; check if counter is longer than dest object size
+    cmp     eax, ecx
+    jl      .fail
+
+    ; check if dest and src addresses are NULL
+    test    edi, edi
+    jz      .fail
+    test    esi, esi
+    jz      .fail
+
+    mov     dword [ebp-16], edi ; save dest original address
+
+    ; check if dst == src, pfft nothing to do
+    cmp     edi, esi
+    je      .done
+
+    ; check overlap and pick direction
+    mov     eax, edi            ; eax = dst
+    sub     eax, esi            ; eax = dst - src
+    cmp     eax, ecx            ; dst - src < n?
+    jb      .backward           ; overlap detected, copy backward
+
+.forward:
+    cld                         ; direction flag forward
+
+    test    edi, 3
+    jz      .body               ; already aligned, skip head entirely
+
+    ; process unaligned head bytes one at a time
+.unaligned_dst:
+    movsb                       ; copy 1 byte [esi] -> [edi], advance both
+    dec     ecx
+    jz      .done               ; processed the whole counter
+    test    edi, 3              ; check if aligned now
+    jz      .body
+    jmp     .unaligned_dst
+
+.body:
+    mov     dword [ebp-12], ecx ; save full count
+    and     dword [ebp-12], 3   ; keep bottom 2 bits = remainder
+    cmp     ecx, 4
+    jl      .tail               ; less than 4 bytes, skip dword loop
+    shr     ecx, 2              ; convert to dword count
+
+    ; bulk copy aligned dwords
+    rep     movsd               ; copy ecx dwords [esi] -> [edi], advances both
+
+.tail:
+    mov     ecx, [ebp-12]       ; load remainder byte count
+    test    ecx, ecx
+    jz      .done               ; nothing left
+    rep     movsb               ; copy remaining bytes [esi] -> [edi]
+    jmp     .done
+
+.backward:
+    std                         ; direction flag backward
+
+    add     esi, ecx            ; point to last byte of src
+    add     edi, ecx            ; point to last byte of dst
+    dec     esi
+    dec     edi
+
+    ; copy all bytes backward, no dword optimization
+    rep     movsb               ; copy ecx bytes [esi] -> [edi], decrements both
+
+    cld                         ; reset direction flag
+
+.done:
+    mov     eax, [ebp-16]       ; return the original dest address
+
+    lea     esp, [ebp-8]
+    pop     edi
+    pop     esi
+    pop     ebp
+    ret
+
+.fail:
+    mov     eax, -1
+
+    lea     esp, [ebp-8]
+    pop     edi
+    pop     esi
+    pop     ebp
+    ret
+
+; --------------------------------------------------------
+; asm_memmove
+; --------------------------------------------------------
+;   purpose: thin wrapper around asm_memmove_s with no size cap
+;   input:   [ebp+8]  address of destination object     (4 bytes)
+;            [ebp+12] address of source object          (4 bytes)
+;            [ebp+16] number of bytes to copy           (4 bytes)
+;   output:  eax = original destination object address
+;            eax = -1 on failure
+;   trashes: ecx
+;   saves:   esi, edi
+; --------------------------------------------------------
+SYM(asm_memmove):
+    mov     eax, [esp+4]        ; dest addr
+    mov     ecx, [esp+8]        ; src addr
+    mov     edx, [esp+12]       ; n
+    push    edx                 ; n
+    push    ecx                 ; src addr
+    push    dword INT32_MAX     ; smax
+    push    eax                 ; dest addr
+    call    SYM(asm_memmove_s)
     add     esp, 16
     ret

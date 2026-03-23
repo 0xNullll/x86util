@@ -1,5 +1,5 @@
 ; --------------------------------------------------------
-; test_memcpy.asm
+; test_memcpy_s.asm
 ;   purpose: tests asm_memcpy_s with 7 cases
 ;   case 1:  valid copy, expect original dest address returned
 ;   case 2:  null destination, expect -1
@@ -8,9 +8,9 @@
 ;   case 5:  dest size is zero, expect -1
 ;   case 6:  n equals dest size, expect original dest address
 ;   case 7:  verify bytes were actually copied correctly
-;   build  : nasm -w+all -D WINDOWS -f win32   test_memcpy.asm -o test_memcpy.obj
-;            nasm -w+all -D LINUX   -f elf32   test_memcpy.asm -o test_memcpy.obj
-;            nasm -w+all -D MACOS   -f macho32 test_memcpy.asm -o test_memcpy.obj
+;   build  : nasm -w+all -D WINDOWS -f win32   test_memcpy_s.asm -o test_memcpy_s.obj
+;            nasm -w+all -D LINUX   -f elf32   test_memcpy_s.asm -o test_memcpy_s.obj
+;            nasm -w+all -D MACOS   -f macho32 test_memcpy_s.asm -o test_memcpy_s.obj
 ; --------------------------------------------------------
 
 BITS 32

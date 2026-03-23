@@ -1,12 +1,12 @@
 ; --------------------------------------------------------
-; test_strlen.asm
+; test_strlen_s.asm
 ;   purpose: tests asm_strlen_s with 3 cases
 ;   case 1:  valid string, expect correct length
 ;   case 2:  empty string, expect 0
 ;   case 3:  max_len smaller than string, expect -1
-;   build  : nasm -w+all -D WINDOWS -f win32   test_strlen.asm -o test_strlen.obj
-;            nasm -w+all -D LINUX   -f elf32   test_strlen.asm -o test_strlen.obj
-;            nasm -w+all -D MACOS   -f macho32 test_strlen.asm -o test_strlen.obj
+;   build  : nasm -w+all -D WINDOWS -f win32   test_strlen_s.asm -o test_strlen_s.obj
+;            nasm -w+all -D LINUX   -f elf32   test_strlen_s.asm -o test_strlen_s.obj
+;            nasm -w+all -D MACOS   -f macho32 test_strlen_s.asm -o test_strlen_s.obj
 ; --------------------------------------------------------
 
 BITS 32

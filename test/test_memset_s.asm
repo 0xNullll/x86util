@@ -1,5 +1,5 @@
 ; --------------------------------------------------------
-; test_memset.asm
+; test_memset_s.asm
 ;   purpose: tests asm_memset_s with 7 cases
 ;   case 1:  valid buffer, expect original pointer returned
 ;   case 2:  null pointer, expect -1
@@ -8,9 +8,9 @@
 ;   case 5:  n equals smax, expect original pointer returned
 ;   case 6:  verify bytes were actually written
 ;   case 7:  returned address matches original address exactly
-;   build  : nasm -w+all -D WINDOWS -f win32   test_memset.asm -o test_memset.obj
-;            nasm -w+all -D LINUX   -f elf32   test_memset.asm -o test_memset.obj
-;            nasm -w+all -D MACOS   -f macho32 test_memset.asm -o test_memset.obj
+;   build  : nasm -w+all -D WINDOWS -f win32   test_memset_s.asm -o test_memset_s.obj
+;            nasm -w+all -D LINUX   -f elf32   test_memset_s.asm -o test_memset_s.obj
+;            nasm -w+all -D MACOS   -f macho32 test_memset_s.asm -o test_memset_s.obj
 ; --------------------------------------------------------
 
 BITS 32
