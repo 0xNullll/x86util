@@ -13,17 +13,17 @@
 ;
 ;   exports
 ;     asm_strlen    - get length of a null terminated string
-;     asm_strlen_s  - asm_strlen with with size cap (safe version)
+;     asm_strlen_s  - asm_strlen with explicit size cap (safe version)
 ;     asm_memset    - fill a memory region with a value
-;     asm_memset_s  - asm_memset with size cap (safe version)
+;     asm_memset_s  - asm_memset with explicit size cap (safe version)
 ;     asm_memcpy    - copy a memory region (no overlap)
-;     asm_memcpy_s  - asm_memcpy with size cap (safe version | no overlap)
+;     asm_memcpy_s  - asm_memcpy with explicit size cap (safe version | no overlap)
 ;     asm_memmove   - copy a memory region (overlap safe)
-;     asm_memmove_s - asm_memmove with size cap (safe version | overlap safe)
+;     asm_memmove_s - asm_memmove with explicit size cap (safe version | overlap safe)
 ;     asm_strcmp    - compare two strings
-;     asm_strcmp_s  - asm_strcmp with size cap (safe version)
+;     asm_strcmp_s  - asm_strcmp with explicit size cap (safe version)
 ;     asm_strcpy    - copy a string into a buffer
-;     asm_strcpy_s  - asm_strcpy with size cap (safe version)
+;     asm_strcpy_s  - asm_strcpy with explicit size cap (safe version)
 ; ============================================================
 
 BITS 32
