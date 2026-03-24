@@ -12,9 +12,9 @@ at runtime the library detects available CPU extensions via `CPUID` and dispatch
 
 ## build
 ```nasm
-nasm -w+all -D WINDOWS -f win32   src/x86util.asm -o x86util.obj
-nasm -w+all -D LINUX   -f elf32   src/x86util.asm -o x86util.obj
-nasm -w+all -D MACOS   -f macho32 src/x86util.asm -o x86util.obj
+; Choose target OS: {WINDOWS|LINUX|MACOS}
+; Format mapping: WINDOWS -> win32, LINUX -> elf32, MACOS -> macho32
+nasm -w+all -D <OS> -f <FORMAT> src/x86util.asm -o x86util.obj
 ```
 
 link against your project and declare the functions extern. no runtime, no init, no teardown.
@@ -101,13 +101,10 @@ x86util/
 
 each function has a dedicated test file covering valid input, null addresses, size violations, boundary conditions, and byte verification. build and link each test against x86util.obj and run — exit code 0 means all cases passed, nonzero indicates the failing case number.
 ```nasm
-nasm -w+all -D WINDOWS -f win32 test/test_memset_s.asm  -o test_memset_s.obj
-nasm -w+all -D WINDOWS -f win32 test/test_memcmp_s.asm  -o test_memcmp_s.obj
-nasm -w+all -D WINDOWS -f win32 test/test_memcpy_s.asm  -o test_memcpy_s.obj
-nasm -w+all -D WINDOWS -f win32 test/test_memmove_s.asm -o test_memmove_s.obj
-nasm -w+all -D WINDOWS -f win32 test/test_strcmp_s.asm  -o test_strcmp_s.obj
-nasm -w+all -D WINDOWS -f win32 test/test_strcpy_s.asm  -o test_strcpy_s.obj
-nasm -w+all -D WINDOWS -f win32 test/test_strlen_s.asm  -o test_strlen_s.obj
+; Choose target OS: {WINDOWS|LINUX|MACOS}
+; Format mapping: WINDOWS -> win32, LINUX -> elf32, MACOS -> macho32
+; Assemble any test file in ./test:
+nasm -w+all -D <OS> -f <FORMAT> test/<file>.asm -o <file>.obj
 ```
 
 ## target
