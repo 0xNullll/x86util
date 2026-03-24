@@ -103,7 +103,6 @@ each function has a dedicated test file covering valid input, null addresses, si
 ```nasm
 ; Choose target OS: {WINDOWS|LINUX|MACOS}
 ; Format mapping: WINDOWS -> win32, LINUX -> elf32, MACOS -> macho32
-; Assemble any test file in ./test:
 nasm -w+all -D <OS> -f <FORMAT> test/<file>.asm -o <file>.obj
 ```
 
