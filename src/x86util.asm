@@ -14,12 +14,12 @@
 ;   exports
 ;     x86_memset    - fill a memory region with a value
 ;     x86_memset_s  - x86_memset with explicit size cap (safe version)
+;     x86_memcmp    - compare two memory regions byte by byte
+;     x86_memcmp_s  - x86_memcmp with explicit size cap (safe version)
 ;     x86_memcpy    - copy a memory region (no overlap)
 ;     x86_memcpy_s  - x86_memcpy with explicit size cap (safe version | no overlap)
 ;     x86_memmove   - copy a memory region (overlap safe)
 ;     x86_memmove_s - x86_memmove with explicit size cap (safe version | overlap safe)
-;     x86_memcmp    - compare two memory regions byte by byte
-;     x86_memcmp_s  - x86_memcmp with explicit size cap (safe version)
 ;     x86_strcmp    - compare two strings
 ;     x86_strcmp_s  - x86_strcmp with explicit size cap (safe version)
 ;     x86_strcpy    - copy a string into a buffer
@@ -43,12 +43,12 @@ BITS 32
 
 global SYM(x86_memset_s)
 global SYM(x86_memset)
+global SYM(x86_memcmp)
+global SYM(x86_memcmp_s)
 global SYM(x86_memcpy_s)
 global SYM(x86_memcpy)
 global SYM(x86_memmove_s)
 global SYM(x86_memmove)
-global SYM(x86_memcmp)
-global SYM(x86_memcmp_s)
 global SYM(x86_strcmp)
 global SYM(x86_strcmp_s)
 global SYM(x86_strlen_s)
@@ -186,6 +186,155 @@ SYM(x86_memset):
     push    dword INT32_MAX     ; smax
     push    eax                 ; addr
     call    SYM(x86_memset_s)
+    add     esp, 16
+    ret
+
+; --------------------------------------------------------
+; x86_memcmp_s
+; --------------------------------------------------------
+;   purpose: compare n bytes of two memory regions,
+;            with bounds checking and null address validation
+;   input:   [ebp+8]  address of left hand object       (4 bytes)
+;            [ebp+12] left hand object size             (4 bytes)
+;            [ebp+16] address of right hand object      (4 bytes)
+;            [ebp+20] number of bytes to compare        (4 bytes)
+;   output:  eax = 0  if regions are equal
+;            eax < 0  if lhs byte < rhs byte at first difference
+;            eax > 0  if lhs byte > rhs byte at first difference
+;            eax = INT32_MIN on failure
+;   trashes: ecx, edx
+;   saves:   esi, edi
+; --------------------------------------------------------
+SYM(x86_memcmp_s):
+    push    ebp
+    mov     ebp, esp
+    push    esi                 ; save callee saved [ebp-4]
+    push    edi                 ; save callee saved [ebp-8]
+    sub     esp, 8              ; local var [ebp-12] + 4 bytes padding
+
+    mov     esi, [ebp+8]        ; load left object address
+    mov     eax, [ebp+12]       ; load left object size
+    mov     edi, [ebp+16]       ; load right object address
+    mov     ecx, [ebp+20]       ; load counter
+
+    ; check if left object size and counter exceeds INT32_MAX
+    cmp     eax, INT32_MAX
+    ja      .fail
+    cmp     ecx, INT32_MAX
+    ja      .fail
+
+    ; check if left object size is zero
+    test    eax, eax
+    jz      .fail
+
+    ; check if counter is longer than left object size
+    cmp     eax, ecx
+    jl      .fail
+
+    ; check if left and right addresses are NULL
+    test    esi, esi
+    jz      .fail
+    test    edi, edi
+    jz      .fail
+
+    ; check if lhs == rhs, pfft nothing to do, both are equal
+    cmp     esi, edi
+    je      .equal
+
+    cld                         ; make sure direction flag is set to forward
+
+    test    esi, 3
+    jz      .body               ; already aligned, skip head entirely
+
+; process unaligned head bytes one at a time
+.unaligned_lhs:
+    cmpsb                       ; compare [esi] with [edi], advance both
+    jnz     .not_equal          ; if ZF=0, mismatch found
+    dec     ecx
+    jz      .done               ; proccessed the whole counter
+    test    esi, 3              ; check if aligned now
+    jz      .body
+    jmp     .unaligned_lhs
+
+.body:
+    mov     dword [ebp-12], ecx ; save full count
+    and     dword [ebp-12], 3   ; keep bottom 2 bits = remainder
+    cmp     ecx, 4
+    jl      .tail               ; less than 4 bytes, skip dword loop
+    shr     ecx, 2              ; convert to dword count
+
+    repe    cmpsd               ; compare dword [esi] with [edi]
+    jne     .find_byte          ; mismatch in this dword, locate exact byte
+    jmp     .tail
+
+.find_byte:
+    sub     esi, 4              ; back up full dword
+    sub     edi, 4
+    mov     ecx, 4              ; scan 4 bytes
+    repe    cmpsb               ; find exact differing byte
+                                ; esi/edi now one past differing byte
+    jmp     .not_equal          ; dec + subtract
+
+.tail:
+    mov     ecx, [ebp-12]       ; load remainder byte count
+    test    ecx, ecx
+    jz      .equal              ; nothing left to compare, all matched
+    repe    cmpsb               ; compare remaining bytes [esi] with [edi]
+    jne     .not_equal          ; mismatch spotted
+
+.not_equal:
+    ; mismatch found, esi/edi point one past differing bytes
+    ; back up one to get the differing bytes
+    dec     esi
+    dec     edi
+
+    movzx   eax, byte [esi]     ; lhs byte
+    movzx   edx, byte [edi]     ; rhs byte
+    sub     eax, edx            ; lhs - rhs -> negative, zero, positive
+    jnz     .done
+
+.equal:
+    xor     eax, eax            ; both are equal, return 0
+
+.done:
+    lea     esp, [ebp-8]
+    pop     edi
+    pop     esi
+    pop     ebp
+    ret
+
+.fail:
+    mov     eax, INT32_MIN
+
+    lea     esp, [ebp-8]
+    pop     edi
+    pop     esi
+    pop     ebp
+    ret
+
+; --------------------------------------------------------
+; x86_memcmp
+; --------------------------------------------------------
+;   purpose: thin wrapper around x86_memcmp_s with no size cap
+;   input:   [ebp+4]  address of left hand object       (4 bytes)
+;            [ebp+8]  address of right hand object      (4 bytes)
+;            [ebp+12] number of bytes to compare        (4 bytes)
+;   output:  eax = 0  if regions are equal
+;            eax < 0  if lhs byte < rhs byte at first difference
+;            eax > 0  if lhs byte > rhs byte at first difference
+;            eax = INT32_MIN on failure
+;   trashes: ecx, edx
+;   saves:   esi, edi
+; --------------------------------------------------------
+SYM(x86_memcmp):
+    mov     eax, [esp+4]        ; left addr
+    mov     ecx, [esp+8]        ; right addr
+    mov     edx, [esp+12]       ; n
+    push    edx                 ; n
+    push    ecx                 ; right addr
+    push    dword INT32_MAX     ; smax
+    push    eax                 ; left addr
+    call    SYM(x86_memcmp_s)
     add     esp, 16
     ret
 
@@ -452,155 +601,6 @@ SYM(x86_memmove):
     push    dword INT32_MAX     ; smax
     push    eax                 ; dest addr
     call    SYM(x86_memmove_s)
-    add     esp, 16
-    ret
-
-; --------------------------------------------------------
-; x86_memcmp_s
-; --------------------------------------------------------
-;   purpose: compare n bytes of two memory regions,
-;            with bounds checking and null address validation
-;   input:   [ebp+8]  address of left hand object       (4 bytes)
-;            [ebp+12] left hand object size             (4 bytes)
-;            [ebp+16] address of right hand object      (4 bytes)
-;            [ebp+20] number of bytes to compare        (4 bytes)
-;   output:  eax = 0  if regions are equal
-;            eax < 0  if lhs byte < rhs byte at first difference
-;            eax > 0  if lhs byte > rhs byte at first difference
-;            eax = INT32_MIN on failure
-;   trashes: ecx, edx
-;   saves:   esi, edi
-; --------------------------------------------------------
-SYM(x86_memcmp_s):
-    push    ebp
-    mov     ebp, esp
-    push    esi                 ; save callee saved [ebp-4]
-    push    edi                 ; save callee saved [ebp-8]
-    sub     esp, 8              ; local var [ebp-12] + 4 bytes padding
-
-    mov     esi, [ebp+8]        ; load left object address
-    mov     eax, [ebp+12]       ; load left object size
-    mov     edi, [ebp+16]       ; load right object address
-    mov     ecx, [ebp+20]       ; load counter
-
-    ; check if left object size and counter exceeds INT32_MAX
-    cmp     eax, INT32_MAX
-    ja      .fail
-    cmp     ecx, INT32_MAX
-    ja      .fail
-
-    ; check if left object size is zero
-    test    eax, eax
-    jz      .fail
-
-    ; check if counter is longer than left object size
-    cmp     eax, ecx
-    jl      .fail
-
-    ; check if left and right addresses are NULL
-    test    esi, esi
-    jz      .fail
-    test    edi, edi
-    jz      .fail
-
-    ; check if lhs == rhs, pfft nothing to do, both are equal
-    cmp     esi, edi
-    je      .equal
-
-    cld                         ; make sure direction flag is set to forward
-
-    test    esi, 3
-    jz      .body               ; already aligned, skip head entirely
-
-; process unaligned head bytes one at a time
-.unaligned_lhs:
-    cmpsb                       ; compare [esi] with [edi], advance both
-    jnz     .not_equal          ; if ZF=0, mismatch found
-    dec     ecx
-    jz      .done               ; proccessed the whole counter
-    test    esi, 3              ; check if aligned now
-    jz      .body
-    jmp     .unaligned_lhs
-
-.body:
-    mov     dword [ebp-12], ecx ; save full count
-    and     dword [ebp-12], 3   ; keep bottom 2 bits = remainder
-    cmp     ecx, 4
-    jl      .tail               ; less than 4 bytes, skip dword loop
-    shr     ecx, 2              ; convert to dword count
-
-    repe    cmpsd               ; compare dword [esi] with [edi]
-    jne     .find_byte          ; mismatch in this dword, locate exact byte
-    jmp     .tail
-
-.find_byte:
-    sub     esi, 4              ; back up full dword
-    sub     edi, 4
-    mov     ecx, 4              ; scan 4 bytes
-    repe    cmpsb               ; find exact differing byte
-                                ; esi/edi now one past differing byte
-    jmp     .not_equal          ; dec + subtract
-
-.tail:
-    mov     ecx, [ebp-12]       ; load remainder byte count
-    test    ecx, ecx
-    jz      .equal              ; nothing left to compare, all matched
-    repe    cmpsb               ; compare remaining bytes [esi] with [edi]
-    jne     .not_equal          ; mismatch spotted
-
-.not_equal:
-    ; mismatch found, esi/edi point one past differing bytes
-    ; back up one to get the differing bytes
-    dec     esi
-    dec     edi
-
-    movzx   eax, byte [esi]     ; lhs byte
-    movzx   edx, byte [edi]     ; rhs byte
-    sub     eax, edx            ; lhs - rhs -> negative, zero, positive
-    jnz     .done
-
-.equal:
-    xor     eax, eax            ; both are equal, return 0
-
-.done:
-    lea     esp, [ebp-8]
-    pop     edi
-    pop     esi
-    pop     ebp
-    ret
-
-.fail:
-    mov     eax, INT32_MIN
-
-    lea     esp, [ebp-8]
-    pop     edi
-    pop     esi
-    pop     ebp
-    ret
-
-; --------------------------------------------------------
-; x86_memcmp
-; --------------------------------------------------------
-;   purpose: thin wrapper around x86_memcmp_s with no size cap
-;   input:   [ebp+4]  address of left hand object       (4 bytes)
-;            [ebp+8]  address of right hand object      (4 bytes)
-;            [ebp+12] number of bytes to compare        (4 bytes)
-;   output:  eax = 0  if regions are equal
-;            eax < 0  if lhs byte < rhs byte at first difference
-;            eax > 0  if lhs byte > rhs byte at first difference
-;            eax = INT32_MIN on failure
-;   trashes: ecx, edx
-;   saves:   esi, edi
-; --------------------------------------------------------
-SYM(x86_memcmp):
-    mov     eax, [esp+4]        ; left addr
-    mov     ecx, [esp+8]        ; right addr
-    mov     edx, [esp+12]       ; n
-    push    edx                 ; n
-    push    ecx                 ; right addr
-    push    dword INT32_MAX     ; smax
-    push    eax                 ; left addr
-    call    SYM(x86_memcmp_s)
     add     esp, 16
     ret
 

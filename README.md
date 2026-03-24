@@ -25,12 +25,12 @@ link against your project and declare the functions extern. no runtime, no init,
 |---|---|
 | `x86_memset` | fill a memory region with a byte value |
 | `x86_memset_s` | x86_memset with explicit size cap |
+| `x86_memcmp` | compare two memory regions byte by byte |
+| `x86_memcmp_s` | x86_memcmp with explicit size cap |
 | `x86_memcpy` | copy a memory region, no overlap |
 | `x86_memcpy_s` | x86_memcpy with explicit size cap |
 | `x86_memmove` | copy a memory region, overlap safe |
 | `x86_memmove_s` | x86_memmove with explicit size cap |
-| `x86_memcmp` | compare two memory regions byte by byte |
-| `x86_memcmp_s` | x86_memcmp with explicit size cap |
 | `x86_strcmp` | compare two null terminated strings |
 | `x86_strcmp_s` | x86_strcmp with explicit size cap |
 | `x86_strcpy` | copy a string into a buffer |
@@ -60,8 +60,8 @@ all functions return `-1` on failure. failure conditions: null address, zero siz
 | function | byte loop | dword | SSE2 | AVX | AVX2 |
 |---|---|---|---|---|---|
 | `x86_memset` | x | x | x | x | x |
-| `x86_memcpy` | x | x | x | x | x |
 | `x86_memcmp` | x | x | x | x | x |
+| `x86_memcpy` | x | x | x | x | x |
 | `x86_memmove` | x | — | — | — | — |
 | `x86_strcmp` | x | — | — | — | — |
 | `x86_strcpy` | x | — | — | — | — |
@@ -102,9 +102,9 @@ x86util/
 each function has a dedicated test file covering valid input, null addresses, size violations, boundary conditions, and byte verification. build and link each test against x86util.obj and run — exit code 0 means all cases passed, nonzero indicates the failing case number.
 ```nasm
 nasm -w+all -D WINDOWS -f win32 test/test_memset_s.asm  -o test_memset_s.obj
+nasm -w+all -D WINDOWS -f win32 test/test_memcmp_s.asm  -o test_memcmp_s.obj
 nasm -w+all -D WINDOWS -f win32 test/test_memcpy_s.asm  -o test_memcpy_s.obj
 nasm -w+all -D WINDOWS -f win32 test/test_memmove_s.asm -o test_memmove_s.obj
-nasm -w+all -D WINDOWS -f win32 test/test_memcmp_s.asm  -o test_memcmp_s.obj
 nasm -w+all -D WINDOWS -f win32 test/test_strcmp_s.asm  -o test_strcmp_s.obj
 nasm -w+all -D WINDOWS -f win32 test/test_strcpy_s.asm  -o test_strcpy_s.obj
 nasm -w+all -D WINDOWS -f win32 test/test_strlen_s.asm  -o test_strlen_s.obj
