@@ -60,7 +60,7 @@ all functions return `-1` on failure. failure conditions: null address, zero siz
 - safe variant is always the real implementation
 - base variant forwards to safe variant with `INT32_MAX` as the default cap
 - CPUID queried once on first call, results cached for all subsequent dispatch decisions
-- dispatch order: AVX2 → AVX → SSE2 → base x86
+- dispatch order: AVX2 -> AVX -> SSE2 -> base x86
 - comparison functions return exact byte difference — negative if lhs < rhs, zero if equal, positive if lhs > rhs
 - no heap, no globals beyond CPUID cache, no state — pure functions
 
