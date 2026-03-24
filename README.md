@@ -71,12 +71,12 @@ all functions return `-1` on failure. failure conditions: null address, zero siz
 | `x86_memset` | x | x | x | x | x |
 | `x86_memcmp` | x | x | x | x | x |
 | `x86_memcpy` | x | x | x | x | x |
-| `x86_memmove` | x | — | — | — | — |
+| `x86_memmove` | x | x | x | x | x |
 | `x86_strcmp` | x | — | — | — | — |
 | `x86_strcpy` | x | — | — | — | — |
 | `x86_strlen` | x | x | x | x| x |
 
-`x86_memmove`, `x86_strcmp`, and `x86_strcpy` operate on a byte loop — memmove requires precise overlap-aware direction control, while strcmp and strcpy must detect null termination mid-scan, both of which make wider register optimization impractical without significant complexity for marginal gain.
+`x86_strcmp`, and `x86_strcpy` operate on a byte loop — strcmp and strcpy must detect null termination mid-scan, both of which make wider register optimization impractical without significant complexity for marginal gain.
 
 ## extension paths
 

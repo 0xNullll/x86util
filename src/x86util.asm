@@ -1,8 +1,7 @@
 ; ============================================================
 ; x86util.asm
 ;
-;   a minimal x86 utility library using only base registers,
-;   no SIMD extensions, no external dependencies
+;   a minimal x86 utility library
 ;
 ;   target  : x86 32-bit | Win32 COFF / ELF32 / MACHO32 | cdecl
 ;   author  : 0xNullll (https://github.com/0xNullll)
@@ -26,6 +25,22 @@
 ;     x86_strcpy_s  - x86_strcpy with explicit size cap (safe version)
 ;     x86_strlen    - get length of a null terminated string
 ;     x86_strlen_s  - x86_strlen with explicit size cap (safe version)
+;
+;   additional exports (functions not yet implemented)
+;     x86_bzero       - zero out a memory region
+;     x86_bzero_s     - x86_bzero with explicit size cap (safe version)
+;     x86_memxor      - XOR two memory regions, store result in first
+;     x86_memxor_s    - x86_memxor with explicit size cap (safe version)
+;     x86_memswap     - swap two memory regions in place
+;     x86_memswap_s   - x86_memswap with explicit size cap (safe version)
+;     x86_memrev      - reverse a memory block in place
+;     x86_memrev_s    - x86_memrev with explicit size cap (safe version)
+;     x86_memchr      - find first occurrence of a byte in memory
+;     x86_memchr_s    - x86_memchr with explicit size cap (safe version)
+;     x86_strchr      - find first occurrence of a character in string
+;     x86_strchr_s    - x86_strchr with explicit size cap (safe version)
+;     x86_checksum32  - compute 32-bit checksum over a memory block
+;     x86_checksum32_s- x86_checksum32 with explicit size cap (safe version)
 ; ============================================================
 
 BITS 32
@@ -51,6 +66,8 @@ global SYM(x86_memmove_s)
 global SYM(x86_memmove)
 global SYM(x86_strcmp)
 global SYM(x86_strcmp_s)
+global SYM(x86_strcpy)
+global SYM(x86_strcpy_s)
 global SYM(x86_strlen_s)
 global SYM(x86_strlen)
 
@@ -661,13 +678,13 @@ SYM(x86_strcmp_s):
     mov     al, byte [esi]      ; load lhs byte
     mov     dl, byte [edi]      ; load rhs byte
     cmp     al, dl              ; compare
-    jne     .not_equal          ; mismatch → bail
+    jne     .not_equal          ; mismatch -> bail
     test    al, al              ; null check — only need lhs
-    jz      .equal              ; both null → equal
+    jz      .equal              ; both null -> equal
     inc     esi
     inc     edi
     dec     ecx
-    jnz     .loop               ; cap hit with all matched → equal
+    jnz     .loop               ; cap hit with all matched -> equal
 
 .not_equal:
     movzx   eax, al             ; lhs byte already in al
@@ -717,6 +734,107 @@ SYM(x86_strcmp):
     push    dword INT32_MAX     ; smax
     push    eax                 ; left addr
     call    SYM(x86_strcmp_s)
+    add     esp, 16
+    ret
+
+; --------------------------------------------------------
+; x86_strcpy_s
+; --------------------------------------------------------
+;   purpose: copy n bytes from one memory string to another,
+;            with bounds checking and null address validation
+;   input:   [ebp+8]  address of destination string     (4 bytes)
+;            [ebp+12] destination string size           (4 bytes)
+;            [ebp+16] address of source string          (4 bytes)
+;            [ebp+20] number of bytes to copy           (4 bytes)
+;   output:  eax = original destination string address
+;            eax = -1 on failure
+;   trashes: ecx
+;   saves:   esi, edi
+; --------------------------------------------------------
+SYM(x86_strcpy_s):
+    push    ebp
+    mov     ebp, esp
+    push    esi                 ; save callee saved [ebp-4]
+    push    edi                 ; save callee saved [ebp-8]
+    sub     esp, 8              ; local var [ebp-12] + [ebp-16]
+
+    mov     edi, [ebp+8]        ; load dest string address
+    mov     eax, [ebp+12]       ; load dest string size
+    mov     esi, [ebp+16]       ; load src string address
+    mov     ecx, [ebp+20]       ; load counter
+
+    ; check if dest string size and counter exceeds INT32_MAX
+    cmp     eax, INT32_MAX
+    ja      .fail
+    cmp     ecx, INT32_MAX
+    ja      .fail
+
+    ; check if dest string size is zero
+    test    eax, eax
+    jz      .fail
+
+    ; check if counter is longer than dest string size
+    cmp     eax, ecx
+    jl      .fail
+
+    ; check if dest and src addresses are NULL
+    test    edi, edi
+    jz      .fail
+    test    esi, esi
+    jz      .fail
+
+    cld                         ; make sure direction flag is set to forward
+
+    mov     dword [ebp-16], edi ; save dest original address
+
+.loop:
+    mov     al, [esi]           ; read source byte
+    movsb                       ; copy 1 byte [esi] -> [edi], advance both
+    test    al, al              ; null check
+    jz      .done
+    dec     ecx
+    jz      .done               ; proccessed the whole safety cap
+    jmp     .loop
+
+.done:
+    mov     eax, [ebp-16]       ; return the orginal dest address
+
+    lea     esp, [ebp-8]
+    pop     edi
+    pop     esi
+    pop     ebp
+    ret
+
+.fail:
+    mov     eax, -1
+
+    lea     esp, [ebp-8]
+    pop     edi
+    pop     esi
+    pop     ebp
+    ret
+
+; --------------------------------------------------------
+; x86_strcpy
+; --------------------------------------------------------
+;   purpose: thin wrapper around x86_strcpy_s with no size cap
+;   input:   [ebp+4]  address of destination string     (4 bytes)
+;            [ebp+8]  address of source string          (4 bytes)
+;            [ebp+12] number of bytes to copy           (4 bytes)
+;   output:  eax = original destination string address
+;            eax = -1 on failure
+;   trashes: ecx
+;   saves:   esi, edi
+; --------------------------------------------------------
+SYM(x86_strcpy):
+    mov     eax, [esp+4]        ; dest addr
+    mov     ecx, [esp+8]        ; src addr
+    mov     edx, [esp+12]       ; n
+    push    edx                 ; n
+    push    ecx                 ; src addr
+    push    dword INT32_MAX     ; smax
+    push    eax                 ; dest addr
+    call    SYM(x86_strcpy_s)
     add     esp, 16
     ret
 
@@ -827,47 +945,6 @@ SYM(x86_strlen_s):
     pop     edi
     pop     esi
     pop     ebp
-    ret
-
-; --------------------------------------------------------
-; x86_strcpy_s
-; --------------------------------------------------------
-;   purpose: copy n bytes from one memory string to another,
-;            with bounds checking and null address validation
-;   input:   [ebp+8]  address of destination string     (4 bytes)
-;            [ebp+12] destination string size           (4 bytes)
-;            [ebp+16] address of source string          (4 bytes)
-;            [ebp+20] number of bytes to copy           (4 bytes)
-;   output:  eax = original destination string address
-;            eax = -1 on failure
-;   trashes: ecx
-;   saves:   esi, edi
-; --------------------------------------------------------
-SYM(x86_strcpy_s):
-    ret
-
-; --------------------------------------------------------
-; x86_strcpy
-; --------------------------------------------------------
-;   purpose: thin wrapper around x86_strcpy_s with no size cap
-;   input:   [ebp+4]  address of destination string     (4 bytes)
-;            [ebp+8]  address of source string          (4 bytes)
-;            [ebp+12] number of bytes to copy           (4 bytes)
-;   output:  eax = original destination string address
-;            eax = -1 on failure
-;   trashes: ecx
-;   saves:   esi, edi
-; --------------------------------------------------------
-SYM(x86_strcpy):
-    mov     eax, [esp+4]        ; dest addr
-    mov     ecx, [esp+8]        ; src addr
-    mov     edx, [esp+12]       ; n
-    push    edx                 ; n
-    push    ecx                 ; src addr
-    push    dword INT32_MAX     ; smax
-    push    eax                 ; dest addr
-    call    SYM(x86_memcpy_s)
-    add     esp, 16
     ret
 
 ; --------------------------------------------------------
