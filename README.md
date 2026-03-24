@@ -10,7 +10,16 @@ every function has a safe `_s` variant with explicit bounds checking and null ad
 
 at runtime the library detects available CPU extensions via `CPUID` and dispatches to the fastest available implementation — from the base x86 path up through SSE2, AVX, and AVX2. all paths produce identical results.
 
-## build
+## Build and Install
+
+### Clone the Repository
+
+```bash
+git clone https://github.com/0xNullll/x86util
+cd x86util
+```
+
+### build
 ```nasm
 ; Choose target OS: {WINDOWS|LINUX|MACOS}
 ; Format mapping: WINDOWS -> win32, LINUX -> elf32, MACOS -> macho32
