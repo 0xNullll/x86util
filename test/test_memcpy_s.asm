@@ -1,6 +1,6 @@
 ; --------------------------------------------------------
 ; test_memcpy_s.asm
-;   purpose: tests asm_memcpy_s with 7 cases
+;   purpose: tests x86_memcpy_s with 7 cases
 ;   case 1:  valid copy, expect original dest address returned
 ;   case 2:  null destination, expect -1
 ;   case 3:  null source, expect -1
@@ -27,7 +27,7 @@ BITS 32
 %endif
 
 global  SYM(main)
-extern  SYM(asm_memcpy_s)
+extern  SYM(x86_memcpy_s)
 
 section .data
     src         db "hello world", 0     ; 11 bytes + null
@@ -48,7 +48,7 @@ SYM(main):
     push    src                         ; src address
     push    dst_size                    ; dest size = 16
     push    dst                         ; dest address
-    call    SYM(asm_memcpy_s)
+    call    SYM(x86_memcpy_s)
     add     esp, 16
 
     cmp     eax, -1                     ; should not fail
@@ -61,7 +61,7 @@ SYM(main):
     push    src
     push    dst_size
     push    0                           ; null dest
-    call    SYM(asm_memcpy_s)
+    call    SYM(x86_memcpy_s)
     add     esp, 16
 
     cmp     eax, -1                     ; should be -1
@@ -72,7 +72,7 @@ SYM(main):
     push    0                           ; null src
     push    dst_size
     push    dst
-    call    SYM(asm_memcpy_s)
+    call    SYM(x86_memcpy_s)
     add     esp, 16
 
     cmp     eax, -1                     ; should be -1
@@ -83,7 +83,7 @@ SYM(main):
     push    src
     push    dst_size                    ; dest size = 16
     push    dst
-    call    SYM(asm_memcpy_s)
+    call    SYM(x86_memcpy_s)
     add     esp, 16
 
     cmp     eax, -1                     ; should be -1
@@ -94,7 +94,7 @@ SYM(main):
     push    src
     push    0                           ; dest size = 0
     push    dst
-    call    SYM(asm_memcpy_s)
+    call    SYM(x86_memcpy_s)
     add     esp, 16
 
     cmp     eax, -1                     ; should be -1
@@ -105,7 +105,7 @@ SYM(main):
     push    src
     push    dst_size
     push    dst
-    call    SYM(asm_memcpy_s)
+    call    SYM(x86_memcpy_s)
     add     esp, 16
 
     cmp     eax, -1                     ; should not fail

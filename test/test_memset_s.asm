@@ -1,6 +1,6 @@
 ; --------------------------------------------------------
 ; test_memset_s.asm
-;   purpose: tests asm_memset_s with 7 cases
+;   purpose: tests x86_memset_s with 7 cases
 ;   case 1:  valid buffer, expect original pointer returned
 ;   case 2:  null pointer, expect -1
 ;   case 3:  n exceeds smax, expect -1
@@ -27,7 +27,7 @@ BITS 32
 %endif
 
 global SYM(main)
-extern SYM(asm_memset_s)
+extern SYM(x86_memset_s)
 
 section .data
     buf         times 16 db 0xAA   ; 16 bytes prefilled with 0xAA
@@ -45,7 +45,7 @@ SYM(main):
     push    0x42                    ; fill byte
     push    buf_size                ; smax = 16
     push    buf                     ; pointer
-    call    SYM(asm_memset_s)
+    call    SYM(x86_memset_s)
     add     esp, 16
 
     cmp     eax, -1                 ; should not fail
@@ -58,7 +58,7 @@ SYM(main):
     push    0x42
     push    16
     push    0                       ; null pointer
-    call    SYM(asm_memset_s)
+    call    SYM(x86_memset_s)
     add     esp, 16
 
     cmp     eax, -1                 ; should be -1
@@ -69,7 +69,7 @@ SYM(main):
     push    0x42
     push    16                      ; smax = 16
     push    buf
-    call    SYM(asm_memset_s)
+    call    SYM(x86_memset_s)
     add     esp, 16
 
     cmp     eax, -1                 ; should be -1
@@ -80,7 +80,7 @@ SYM(main):
     push    0x42
     push    0                       ; smax = 0
     push    buf
-    call    SYM(asm_memset_s)
+    call    SYM(x86_memset_s)
     add     esp, 16
 
     cmp     eax, -1                 ; should be -1
@@ -91,7 +91,7 @@ SYM(main):
     push    0x55
     push    16
     push    buf
-    call    SYM(asm_memset_s)
+    call    SYM(x86_memset_s)
     add     esp, 16
 
     cmp     eax, -1                 ; should not fail
@@ -114,7 +114,7 @@ SYM(main):
     push    0xBB
     push    buf_size
     push    buf
-    call    SYM(asm_memset_s)
+    call    SYM(x86_memset_s)
     add     esp, 16
 
     mov     esi, buf                ; load actual buf address

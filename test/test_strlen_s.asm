@@ -1,6 +1,6 @@
 ; --------------------------------------------------------
 ; test_strlen_s.asm
-;   purpose: tests asm_strlen_s with 3 cases
+;   purpose: tests x86_strlen_s with 3 cases
 ;   case 1:  valid string, expect correct length
 ;   case 2:  empty string, expect 0
 ;   case 3:  max_len smaller than string, expect -1
@@ -23,7 +23,7 @@ BITS 32
 %endif
 
 global SYM(main)
-extern SYM(asm_strlen_s)
+extern SYM(x86_strlen_s)
 
 section .data
     str_hello   db "hello", 0
@@ -44,7 +44,7 @@ SYM(main):
     ; ---- case 1: valid string "hello" with correct max ----
     push 10                         ; max_len bigger than string
     push str_hello                  ; pointer
-    call SYM(asm_strlen_s)
+    call SYM(x86_strlen_s)
     add  esp, 8
 
     cmp  eax, str_hello_len         ; should be 5
@@ -53,7 +53,7 @@ SYM(main):
     ; ---- case 2: empty string ----
     push 10
     push str_empty
-    call SYM(asm_strlen_s)
+    call SYM(x86_strlen_s)
     add  esp, 8
 
     cmp  eax, str_empty_len         ; should be 0
@@ -62,7 +62,7 @@ SYM(main):
     ; ---- case 3: max_len smaller than actual string ----
     push 3                          ; max_len smaller than "hello world"
     push str_long
-    call SYM(asm_strlen_s)
+    call SYM(x86_strlen_s)
     add  esp, 8
 
     cmp  eax, -1                    ; should be -1
