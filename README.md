@@ -84,10 +84,10 @@ x86util/
     src/
         x86util.asm
     test/
-        test_memset_s.asm
+        test_memcmp_s.asm
         test_memcpy_s.asm
         test_memmove_s.asm
-        test_memcmp_s.asm
+        test_memset_s.asm
         test_strcmp_s.asm
         test_strcpy_s.asm
         test_strlen_s.asm
