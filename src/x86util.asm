@@ -1,7 +1,8 @@
 ; ============================================================
 ; x86util.asm
 ;
-;   a minimal x86 utility library
+;   a minimal x86 string and memory utility library
+;   in pure assembly with SIMD — no OS calls. links anywhere.
 ;
 ;   target  : x86 32-bit | Win32 COFF / ELF32 / MACHO32 | cdecl
 ;   author  : 0xNullll (https://github.com/0xNullll)
