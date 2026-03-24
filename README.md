@@ -26,7 +26,7 @@ cd x86util
 nasm -w+all -D <OS> -f <FORMAT> src/x86util.asm -o x86util.obj
 ```
 
-link against your project and declare the functions extern.
+link against your project and declare the functions extern. no runtime, no init, no teardown.
 
 ## exports
 
