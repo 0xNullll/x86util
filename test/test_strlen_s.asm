@@ -74,20 +74,12 @@ SYM(main):
     pop  ebp
     ret
 
-.fail_case1:
-    mov  eax, 1
-    mov  esp, ebp
-    pop  ebp
-    ret
+.fail_case1:    mov eax, 1
+                jmp .fail
+.fail_case2:    mov eax, 2
+                jmp .fail
+.fail_case3:    mov eax, 3
 
-.fail_case2:
-    mov  eax, 2
-    mov  esp, ebp
-    pop  ebp
-    ret
-
-.fail_case3:
-    mov  eax, 3
-    mov  esp, ebp
-    pop  ebp
+.fail:
+    pop     ebp
     ret

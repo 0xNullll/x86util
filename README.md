@@ -10,9 +10,9 @@ every function has a safe `_s` variant with explicit bounds checking and null ad
 
 at runtime the library detects available CPU extensions via `CPUID` and dispatches to the fastest available implementation — from the base x86 path up through SSE2, AVX, and AVX2. all paths produce identical results.
 
-## Build and Install
+## build and install
 
-### Clone the Repository
+### clone the repository
 
 ```bash
 git clone https://github.com/0xNullll/x86util
@@ -30,22 +30,33 @@ link against your project and declare the functions extern. no runtime, no init,
 
 ## exports
 
-| function | description |
-|---|---|
-| `x86_memset` | fill a memory region with a byte value |
-| `x86_memset_s` | x86_memset with explicit size cap |
-| `x86_memcmp` | compare two memory regions byte by byte |
-| `x86_memcmp_s` | x86_memcmp with explicit size cap |
-| `x86_memcpy` | copy a memory region, no overlap |
-| `x86_memcpy_s` | x86_memcpy with explicit size cap |
-| `x86_memmove` | copy a memory region, overlap safe |
-| `x86_memmove_s` | x86_memmove with explicit size cap |
-| `x86_strcmp` | compare two null terminated strings |
-| `x86_strcmp_s` | x86_strcmp with explicit size cap |
-| `x86_strcpy` | copy a string into a buffer |
-| `x86_strcpy_s` | x86_strcpy with explicit size cap |
-| `x86_strlen` | get length of a null terminated string |
-| `x86_strlen_s` | x86_strlen with explicit size cap |
+| function | description | |
+|---|---|---|
+| `x86_memset` | fill a memory region with a byte value | |
+| `x86_memset_s` | x86_memset with explicit size cap | |
+| `x86_memcmp` | compare two memory regions byte by byte | |
+| `x86_memcmp_s` | x86_memcmp with explicit size cap | |
+| `x86_memcpy` | copy a memory region, no overlap | |
+| `x86_memcpy_s` | x86_memcpy with explicit size cap | |
+| `x86_memmove` | copy a memory region, overlap safe | |
+| `x86_memmove_s` | x86_memmove with explicit size cap | |
+| `x86_strcmp` | compare two null terminated strings | |
+| `x86_strcmp_s` | x86_strcmp with explicit size cap | |
+| `x86_strcpy` | copy a string into a buffer | |
+| `x86_strcpy_s` | x86_strcpy with explicit size cap | |
+| `x86_strlen` | get length of a null terminated string | |
+| `x86_strlen_s` | x86_strlen with explicit size cap | |
+| `x86_bzero` | zero out a memory region | |
+| `x86_memxor` | XOR source buffer into dest in place (dest ^= src) | |
+| `x86_memxor_s` | x86_memxor with explicit size cap | |
+| `x86_memswap` | swap two memory regions in place | |
+| `x86_memswap_s` | x86_memswap with explicit size cap | |
+| `x86_memchr` | find first occurrence of a byte in memory | *not yet implemented* |
+| `x86_memchr_s` | x86_memchr with explicit size cap | *not yet implemented* |
+| `x86_strchr` | find first occurrence of a character in string | *not yet implemented* |
+| `x86_strchr_s` | x86_strchr with explicit size cap | *not yet implemented* |
+| `x86_checksum32` | compute 32-bit checksum over a memory block | *not yet implemented* |
+| `x86_checksum32_s` | x86_checksum32 with explicit size cap | *not yet implemented* |
 
 ## calling convention
 
@@ -60,29 +71,38 @@ all functions return `-1` on failure. failure conditions: null address, zero siz
 - safe variant is always the real implementation
 - base variant forwards to safe variant with `INT32_MAX` as the default cap
 - CPUID queried once on first call, results cached for all subsequent dispatch decisions
-- dispatch order: AVX2 -> AVX -> SSE2 -> base x86
+- dispatch order: AVX2 -> AVX -> SSE2 -> MMX -> base x86
 - comparison functions return exact byte difference — negative if lhs < rhs, zero if equal, positive if lhs > rhs
-- no heap, no globals beyond CPUID cache, no state — pure functions
+- no heap, no globals beyond CPUID cache and no state
 
 ### optimization coverage
 
-| function | byte loop | dword | SSE2 | AVX | AVX2 |
-|---|---|---|---|---|---|
-| `x86_memset` | x | x | x | x | x |
-| `x86_memcmp` | x | x | x | x | x |
-| `x86_memcpy` | x | x | x | x | x |
-| `x86_memmove` | x | x | x | x | x |
-| `x86_strcmp` | x | — | — | — | — |
-| `x86_strcpy` | x | — | — | — | — |
-| `x86_strlen` | x | x | x | x| x |
+> **note:** SIMD dispatch is a work in progress — SSE2, AVX, and AVX2 paths are being added incrementally. all functions currently have a working base x86 path.
 
-`x86_strcmp`, and `x86_strcpy` operate on a byte loop — strcmp and strcpy must detect null termination mid-scan, both of which make wider register optimization impractical without significant complexity for marginal gain.
+| function | byte loop | dword | MMX | SSE2 | AVX | AVX2 |
+|---|---|---|---|---|---|---|
+| `x86_memset` | x | x | planned | planned | planned | planned |
+| `x86_memcmp` | x | x | planned | planned | planned | planned |
+| `x86_memcpy` | x | x | planned | planned | planned | planned |
+| `x86_memmove` | x | x | planned | planned | planned | planned |
+| `x86_strcmp` | x | — | — | — | — | — |
+| `x86_strcpy` | x | — | — | — | — | — |
+| `x86_strchr` | x | — | — | — | — | — |
+| `x86_strlen` | x | x | planned | planned | planned | planned |
+| `x86_bzero` | x | x | planned | planned | planned | planned |
+| `x86_memxor` | x | x | planned | planned | planned | planned |
+| `x86_memswap` | x | x | planned | planned | planned | planned |
+| `x86_memchr` | x | x | planned | planned | planned | planned |
+| `x86_checksum32` | x | x | planned | planned | planned | planned |
+
+`x86_strcmp`, `x86_strcpy`, and `x86_strchr` operate on a byte loop — all three must detect null termination mid-scan, which makes wider register optimization impractical without significant complexity for marginal gain.
 
 ## extension paths
 
 | extension | register width | bytes per iteration |
 |---|---|---|
 | base x86 | 32-bit | 4 |
+| MMX | 64-bit mm | 8 |
 | SSE2 | 128-bit xmm | 16 |
 | AVX | 256-bit ymm | 32 |
 | AVX2 | 256-bit ymm + integer ops | 32 |
@@ -97,6 +117,7 @@ x86util/
         test_memcpy_s.asm
         test_memmove_s.asm
         test_memset_s.asm
+        test_memxor_s.asm
         test_strcmp_s.asm
         test_strcpy_s.asm
         test_strlen_s.asm
@@ -108,12 +129,53 @@ x86util/
 
 ## tests
 
-each function has a dedicated test file covering valid input, null addresses, size violations, boundary conditions, and byte verification. build and link each test against x86util.obj and run — exit code 0 means all cases passed, nonzero indicates the failing case number.
+each function has a dedicated test file covering valid input, null addresses, size violations, boundary conditions, and byte verification.
+
+### build the library
+
 ```nasm
 ; Choose target OS: {WINDOWS|LINUX|MACOS}
 ; Format mapping: WINDOWS -> win32, LINUX -> elf32, MACOS -> macho32
+nasm -w+all -D <OS> -f <FORMAT> src/x86util.asm -o x86util.obj
+```
+
+### build a test
+
+```nasm
 nasm -w+all -D <OS> -f <FORMAT> test/<file>.asm -o <file>.obj
 ```
+
+### link and run
+
+**windows (MSVC link)**
+```bat
+link /subsystem:console /entry:_main <file>.obj x86util.obj /out:<file>.exe
+<file>.exe
+echo "exit code $LASTEXITCODE"
+```
+
+**windows (MinGW ld)**
+```bash
+ld -m i386pe --subsystem console -e _main <file>.obj x86util.obj -o <file>.exe
+./<file>.exe
+echo "exit code: $?"
+```
+
+**linux**
+```bash
+ld -m elf_i386 -e main <file>.obj x86util.obj -o <file>
+./<file>
+echo "exit code: $?"
+```
+
+**macos**
+```bash
+ld -arch i386 -e _main <file>.obj x86util.obj -o <file>
+./<file>
+echo "exit code: $?"
+```
+
+exit code `0` means all cases passed. nonzero indicates the failing case number.
 
 ## target
 ```

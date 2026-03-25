@@ -169,66 +169,24 @@ SYM(main):
     pop     ebp
     ret
 
-.fail_case1:
-    mov     eax, 1
-    pop     edi
-    pop     esi
-    mov     esp, ebp
-    pop     ebp
-    ret
+.fail_case1:    mov eax, 1
+                jmp .fail
+.fail_case2:    mov eax, 2
+                jmp .fail
+.fail_case3:    mov eax, 3
+                jmp .fail
+.fail_case4:    mov eax, 4
+                jmp .fail
+.fail_case5:    mov eax, 5
+                jmp .fail
+.fail_case6:    mov eax, 6
+                jmp .fail
+.fail_case7:    mov eax, 7
+                jmp .fail
+.fail_case8:    mov eax, 8
 
-.fail_case2:
-    mov     eax, 2
+.fail:
     pop     edi
     pop     esi
-    mov     esp, ebp
-    pop     ebp
-    ret
-
-.fail_case3:
-    mov     eax, 3
-    pop     edi
-    pop     esi
-    mov     esp, ebp
-    pop     ebp
-    ret
-
-.fail_case4:
-    mov     eax, 4
-    pop     edi
-    pop     esi
-    mov     esp, ebp
-    pop     ebp
-    ret
-
-.fail_case5:
-    mov     eax, 5
-    pop     edi
-    pop     esi
-    mov     esp, ebp
-    pop     ebp
-    ret
-
-.fail_case6:
-    mov     eax, 6
-    pop     edi
-    pop     esi
-    mov     esp, ebp
-    pop     ebp
-    ret
-
-.fail_case7:
-    mov     eax, 7
-    pop     edi
-    pop     esi
-    mov     esp, ebp
-    pop     ebp
-    ret
-
-.fail_case8:
-    mov     eax, 8
-    pop     edi
-    pop     esi
-    mov     esp, ebp
     pop     ebp
     ret

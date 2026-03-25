@@ -26,16 +26,13 @@
 ;     x86_strcpy_s  - x86_strcpy with explicit size cap (safe version)
 ;     x86_strlen    - get length of a null terminated string
 ;     x86_strlen_s  - x86_strlen with explicit size cap (safe version)
-;
-;   additional exports (functions not yet implemented)
 ;     x86_bzero       - zero out a memory region
-;     x86_bzero_s     - x86_bzero with explicit size cap (safe version)
-;     x86_memxor      - XOR two memory regions, store result in first
+;     x86_memxor      - XOR two memory regions, store result in left
 ;     x86_memxor_s    - x86_memxor with explicit size cap (safe version)
 ;     x86_memswap     - swap two memory regions in place
 ;     x86_memswap_s   - x86_memswap with explicit size cap (safe version)
-;     x86_memrev      - reverse a memory block in place
-;     x86_memrev_s    - x86_memrev with explicit size cap (safe version)
+;
+;   additional exports (functions not yet implemented)
 ;     x86_memchr      - find first occurrence of a byte in memory
 ;     x86_memchr_s    - x86_memchr with explicit size cap (safe version)
 ;     x86_strchr      - find first occurrence of a character in string
@@ -71,8 +68,13 @@ global SYM(x86_strcpy)
 global SYM(x86_strcpy_s)
 global SYM(x86_strlen_s)
 global SYM(x86_strlen)
+global SYM(x86_bzero)
+global SYM(x86_memxor_s)
+global SYM(x86_memxor)
+global SYM(x86_memswap_s)
+global SYM(x86_memswap)
 
-%define INT32_MAX 0x7FFFFFFF
+%define UINT32_MAX 0x7FFFFFFF
 %define INT32_MIN 0x80000000
 
 section .text
@@ -80,13 +82,13 @@ section .text
 ; --------------------------------------------------------
 ; x86_memset_s
 ; --------------------------------------------------------
-;   purpose: fills a memory object with a given byte value,
+;   purpose: fills a memory buffer with a given byte value,
 ;            with bounds checking and null address validation
-;   input:   [ebp+8]  address to the object to fill  (4 bytes)
-;            [ebp+12] object size                    (4 bytes)
+;   input:   [ebp+8]  address to the buffer to fill  (4 bytes)
+;            [ebp+12] buffer size                    (4 bytes)
 ;            [ebp+16] fill byte                      (4 bytes)
 ;            [ebp+20] number of bytes to fill        (4 bytes)
-;   output:  eax = original object address
+;   output:  eax = original buffer address
 ;            eax = -1 on failure
 ;   trashes: ecx
 ;   saves:   esi, edi
@@ -98,21 +100,21 @@ SYM(x86_memset_s):
     push    edi                 ; save callee saved [ebp-8]
     sub     esp, 8              ; local var [ebp-12] + 4 bytes padding
 
-    mov     esi, [ebp+8]        ; load object address
-    mov     eax, [ebp+12]       ; load object size
+    mov     esi, [ebp+8]        ; load buffer address
+    mov     eax, [ebp+12]       ; load buffer size
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if object size and counter exceeds INT32_MAX
-    cmp     eax, INT32_MAX
+    ; check if buffer size and counter exceeds UINT32_MAX
+    cmp     eax, UINT32_MAX
     ja      .fail
-    cmp     ecx, INT32_MAX
+    cmp     ecx, UINT32_MAX
     ja      .fail
 
-    ; check if object size is zero
+    ; check if buffer size is zero
     test    eax, eax
     jz      .fail
 
-    ; check if counter is longer than object size
+    ; check if counter is longer than buffer size
     cmp     eax, ecx
     jl      .fail
 
@@ -186,11 +188,11 @@ SYM(x86_memset_s):
 ; --------------------------------------------------------
 ; x86_memset
 ; --------------------------------------------------------
-;   purpose: thin wrapper around x86_memset_s with no size cap
-;   input:   [ebp+4]  address to the object to fill  (4 bytes)
-;            [ebp+8]  fill byte                      (4 bytes)
-;            [ebp+12] number of bytes to fill        (4 bytes)
-;   output:  eax = original object address
+;   purpose: thin wrapper around x86_memset_s with relaxed size cap
+;   input:   [esp+4]  address to the buffer to fill  (4 bytes)
+;            [esp+8]  fill byte                      (4 bytes)
+;            [esp+12] number of bytes to fill        (4 bytes)
+;   output:  eax = original buffer address
 ;            eax = -1 on failure
 ;   trashes: ecx
 ;   saves:   esi, edi
@@ -201,7 +203,7 @@ SYM(x86_memset):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; fill byte
-    push    dword INT32_MAX     ; smax
+    push    dword UINT32_MAX    ; nmax
     push    eax                 ; addr
     call    SYM(x86_memset_s)
     add     esp, 16
@@ -212,9 +214,9 @@ SYM(x86_memset):
 ; --------------------------------------------------------
 ;   purpose: compare n bytes of two memory regions,
 ;            with bounds checking and null address validation
-;   input:   [ebp+8]  address of left hand object       (4 bytes)
-;            [ebp+12] left hand object size             (4 bytes)
-;            [ebp+16] address of right hand object      (4 bytes)
+;   input:   [ebp+8]  address of left hand buffer       (4 bytes)
+;            [ebp+12] left hand buffer size             (4 bytes)
+;            [ebp+16] address of right hand buffer      (4 bytes)
 ;            [ebp+20] number of bytes to compare        (4 bytes)
 ;   output:  eax = 0  if regions are equal
 ;            eax < 0  if lhs byte < rhs byte at first difference
@@ -230,22 +232,22 @@ SYM(x86_memcmp_s):
     push    edi                 ; save callee saved [ebp-8]
     sub     esp, 8              ; local var [ebp-12] + 4 bytes padding
 
-    mov     esi, [ebp+8]        ; load left object address
-    mov     eax, [ebp+12]       ; load left object size
-    mov     edi, [ebp+16]       ; load right object address
+    mov     esi, [ebp+8]        ; load left buffer address
+    mov     eax, [ebp+12]       ; load left buffer size
+    mov     edi, [ebp+16]       ; load right buffer address
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if left object size and counter exceeds INT32_MAX
-    cmp     eax, INT32_MAX
+    ; check if left buffer size and counter exceeds UINT32_MAX
+    cmp     eax, UINT32_MAX
     ja      .fail
-    cmp     ecx, INT32_MAX
+    cmp     ecx, UINT32_MAX
     ja      .fail
 
-    ; check if left object size is zero
+    ; check if left buffer size is zero
     test    eax, eax
     jz      .fail
 
-    ; check if counter is longer than left object size
+    ; check if counter is longer than left buffer size
     cmp     eax, ecx
     jl      .fail
 
@@ -333,10 +335,10 @@ SYM(x86_memcmp_s):
 ; --------------------------------------------------------
 ; x86_memcmp
 ; --------------------------------------------------------
-;   purpose: thin wrapper around x86_memcmp_s with no size cap
-;   input:   [ebp+4]  address of left hand object       (4 bytes)
-;            [ebp+8]  address of right hand object      (4 bytes)
-;            [ebp+12] number of bytes to compare        (4 bytes)
+;   purpose: thin wrapper around x86_memcmp_s with relaxed size cap
+;   input:   [esp+4]  address of left hand buffer       (4 bytes)
+;            [esp+8]  address of right hand buffer      (4 bytes)
+;            [esp+12] number of bytes to compare        (4 bytes)
 ;   output:  eax = 0  if regions are equal
 ;            eax < 0  if lhs byte < rhs byte at first difference
 ;            eax > 0  if lhs byte > rhs byte at first difference
@@ -350,7 +352,7 @@ SYM(x86_memcmp):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; right addr
-    push    dword INT32_MAX     ; smax
+    push    dword UINT32_MAX    ; nmax
     push    eax                 ; left addr
     call    SYM(x86_memcmp_s)
     add     esp, 16
@@ -359,13 +361,13 @@ SYM(x86_memcmp):
 ; --------------------------------------------------------
 ; x86_memcpy_s
 ; --------------------------------------------------------
-;   purpose: copy n bytes from one memory object to another,
+;   purpose: copy n bytes from one memory buffer to another,
 ;            with bounds checking and null address validation
-;   input:   [ebp+8]  address of destination object     (4 bytes)
-;            [ebp+12] destination object size           (4 bytes)
-;            [ebp+16] address of source object          (4 bytes)
+;   input:   [ebp+8]  address of destination buffer     (4 bytes)
+;            [ebp+12] destination buffer size           (4 bytes)
+;            [ebp+16] address of source buffer          (4 bytes)
 ;            [ebp+20] number of bytes to copy           (4 bytes)
-;   output:  eax = original destination object address
+;   output:  eax = original destination buffer address
 ;            eax = -1 on failure
 ;   trashes: ecx
 ;   saves:   esi, edi
@@ -377,22 +379,22 @@ SYM(x86_memcpy_s):
     push    edi                 ; save callee saved [ebp-8]
     sub     esp, 8              ; local var [ebp-12] + [ebp-16]
 
-    mov     edi, [ebp+8]        ; load dest object address
-    mov     eax, [ebp+12]       ; load dest object size
-    mov     esi, [ebp+16]       ; load src object address
+    mov     edi, [ebp+8]        ; load dest buffer address
+    mov     eax, [ebp+12]       ; load dest buffer size
+    mov     esi, [ebp+16]       ; load src buffer address
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if dest object size and counter exceeds INT32_MAX
-    cmp     eax, INT32_MAX
+    ; check if dest buffer size and counter exceeds UINT32_MAX
+    cmp     eax, UINT32_MAX
     ja      .fail
-    cmp     ecx, INT32_MAX
+    cmp     ecx, UINT32_MAX
     ja      .fail
 
-    ; check if dest object size is zero
+    ; check if dest buffer size is zero
     test    eax, eax
     jz      .fail
 
-    ; check if counter is longer than dest object size
+    ; check if counter is longer than dest buffer size
     cmp     eax, ecx
     jl      .fail
 
@@ -455,11 +457,11 @@ SYM(x86_memcpy_s):
 ; --------------------------------------------------------
 ; x86_memcpy
 ; --------------------------------------------------------
-;   purpose: thin wrapper around x86_memcpy_s with no size cap
-;   input:   [ebp+4]  address of destination object     (4 bytes)
-;            [ebp+8]  address of source object          (4 bytes)
-;            [ebp+12] number of bytes to copy           (4 bytes)
-;   output:  eax = original destination object address
+;   purpose: thin wrapper around x86_memcpy_s with relaxed size cap
+;   input:   [esp+4]  address of destination buffer     (4 bytes)
+;            [esp+8]  address of source buffer          (4 bytes)
+;            [esp+12] number of bytes to copy           (4 bytes)
+;   output:  eax = original destination buffer address
 ;            eax = -1 on failure
 ;   trashes: ecx
 ;   saves:   esi, edi
@@ -470,7 +472,7 @@ SYM(x86_memcpy):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; src addr
-    push    dword INT32_MAX     ; smax
+    push    dword UINT32_MAX     ; nmax
     push    eax                 ; dest addr
     call    SYM(x86_memcpy_s)
     add     esp, 16
@@ -479,14 +481,14 @@ SYM(x86_memcpy):
 ; --------------------------------------------------------
 ; x86_memmove_s
 ; --------------------------------------------------------
-;   purpose: copy n bytes from one memory object to another,
+;   purpose: copy n bytes from one memory buffer to another,
 ;            overlap safe, with bounds checking and null
 ;            address validation
-;   input:   [ebp+8]  address of destination object     (4 bytes)
-;            [ebp+12] destination object size           (4 bytes)
-;            [ebp+16] address of source object          (4 bytes)
+;   input:   [ebp+8]  address of destination buffer     (4 bytes)
+;            [ebp+12] destination buffer size           (4 bytes)
+;            [ebp+16] address of source buffer          (4 bytes)
 ;            [ebp+20] number of bytes to copy           (4 bytes)
-;   output:  eax = original destination object address
+;   output:  eax = original destination buffer address
 ;            eax = -1 on failure
 ;   trashes: ecx
 ;   saves:   esi, edi
@@ -498,22 +500,22 @@ SYM(x86_memmove_s):
     push    edi                 ; save callee saved [ebp-8]
     sub     esp, 8              ; local var [ebp-12] + [ebp-16]
 
-    mov     edi, [ebp+8]        ; load dest object address
-    mov     eax, [ebp+12]       ; load dest object size
-    mov     esi, [ebp+16]       ; load src object address
+    mov     edi, [ebp+8]        ; load dest buffer address
+    mov     eax, [ebp+12]       ; load dest buffer size
+    mov     esi, [ebp+16]       ; load src buffer address
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if dest object size and counter exceeds INT32_MAX
-    cmp     eax, INT32_MAX
+    ; check if dest buffer size and counter exceeds UINT32_MAX
+    cmp     eax, UINT32_MAX
     ja      .fail
-    cmp     ecx, INT32_MAX
+    cmp     ecx, UINT32_MAX
     ja      .fail
 
-    ; check if dest object size is zero
+    ; check if dest buffer size is zero
     test    eax, eax
     jz      .fail
 
-    ; check if counter is longer than dest object size
+    ; check if counter is longer than dest buffer size
     cmp     eax, ecx
     jl      .fail
 
@@ -601,11 +603,11 @@ SYM(x86_memmove_s):
 ; --------------------------------------------------------
 ; x86_memmove
 ; --------------------------------------------------------
-;   purpose: thin wrapper around x86_memmove_s with no size cap
-;   input:   [ebp+4]  address of destination object     (4 bytes)
-;            [ebp+8]  address of source object          (4 bytes)
-;            [ebp+12] number of bytes to copy           (4 bytes)
-;   output:  eax = original destination object address
+;   purpose: thin wrapper around x86_memmove_s with relaxed size cap
+;   input:   [esp+4]  address of destination buffer     (4 bytes)
+;            [esp+8]  address of source buffer          (4 bytes)
+;            [esp+12] number of bytes to copy           (4 bytes)
+;   output:  eax = original destination buffer address
 ;            eax = -1 on failure
 ;   trashes: ecx
 ;   saves:   esi, edi
@@ -616,7 +618,7 @@ SYM(x86_memmove):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; src addr
-    push    dword INT32_MAX     ; smax
+    push    dword UINT32_MAX    ; nmax
     push    eax                 ; dest addr
     call    SYM(x86_memmove_s)
     add     esp, 16
@@ -645,15 +647,15 @@ SYM(x86_strcmp_s):
     push    edi                 ; save callee saved [ebp-8]
     sub     esp, 8              ; local var [ebp-12] + 4 bytes padding
 
-    mov     esi, [ebp+8]        ; load left object address
-    mov     eax, [ebp+12]       ; load left object size
-    mov     edi, [ebp+16]       ; load right object address
+    mov     esi, [ebp+8]        ; load left buffer address
+    mov     eax, [ebp+12]       ; load left buffer size
+    mov     edi, [ebp+16]       ; load right buffer address
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if left string size and counter exceeds INT32_MAX
-    cmp     eax, INT32_MAX
+    ; check if left string size and counter exceeds UINT32_MAX
+    cmp     eax, UINT32_MAX
     ja      .fail
-    cmp     ecx, INT32_MAX
+    cmp     ecx, UINT32_MAX
     ja      .fail
 
     ; check if dest string size is zero
@@ -715,10 +717,10 @@ SYM(x86_strcmp_s):
 ; --------------------------------------------------------
 ; x86_strcmp
 ; --------------------------------------------------------
-;   purpose: thin wrapper around x86_strcmp_s with no size cap
-;   input:   [ebp+4]  address of left hand string       (4 bytes)
-;            [ebp+8]  address of right hand string      (4 bytes)
-;            [ebp+12] number of bytes to compare        (4 bytes)
+;   purpose: thin wrapper around x86_strcmp_s with relaxed size cap
+;   input:   [esp+4]  address of left hand string       (4 bytes)
+;            [esp+8]  address of right hand string      (4 bytes)
+;            [esp+12] number of bytes to compare        (4 bytes)
 ;   output:  eax = 0  if strings are equal
 ;            eax < 0  if lhs byte < rhs byte at first difference
 ;            eax > 0  if lhs byte > rhs byte at first difference
@@ -732,7 +734,7 @@ SYM(x86_strcmp):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; right addr
-    push    dword INT32_MAX     ; smax
+    push    dword UINT32_MAX    ; smax
     push    eax                 ; left addr
     call    SYM(x86_strcmp_s)
     add     esp, 16
@@ -764,10 +766,10 @@ SYM(x86_strcpy_s):
     mov     esi, [ebp+16]       ; load src string address
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if dest string size and counter exceeds INT32_MAX
-    cmp     eax, INT32_MAX
+    ; check if dest string size and counter exceeds UINT32_MAX
+    cmp     eax, UINT32_MAX
     ja      .fail
-    cmp     ecx, INT32_MAX
+    cmp     ecx, UINT32_MAX
     ja      .fail
 
     ; check if dest string size is zero
@@ -818,10 +820,10 @@ SYM(x86_strcpy_s):
 ; --------------------------------------------------------
 ; x86_strcpy
 ; --------------------------------------------------------
-;   purpose: thin wrapper around x86_strcpy_s with no size cap
-;   input:   [ebp+4]  address of destination string     (4 bytes)
-;            [ebp+8]  address of source string          (4 bytes)
-;            [ebp+12] number of bytes to copy           (4 bytes)
+;   purpose: thin wrapper around x86_strcpy_s with relaxed size cap
+;   input:   [esp+4]  address of destination string     (4 bytes)
+;            [esp+8]  address of source string          (4 bytes)
+;            [esp+12] number of bytes to copy           (4 bytes)
 ;   output:  eax = original destination string address
 ;            eax = -1 on failure
 ;   trashes: ecx
@@ -833,7 +835,7 @@ SYM(x86_strcpy):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; src addr
-    push    dword INT32_MAX     ; smax
+    push    dword UINT32_MAX    ; smax
     push    eax                 ; dest addr
     call    SYM(x86_strcpy_s)
     add     esp, 16
@@ -860,14 +862,14 @@ SYM(x86_strlen_s):
     mov     esi, [ebp+8]        ; load string buffer address
     mov     ecx, [ebp+12]       ; load max string length
 
-    ; check if max length exceeds INT32_MAX
-    cmp     ecx, INT32_MAX
+    ; check if max length exceeds UINT32_MAX
+    cmp     ecx, UINT32_MAX
     ja      .fail
 
-    ; check if max length is zero, fallback to INT32_MAX
+    ; check if max length is zero, fallback to UINT32_MAX
     test    ecx, ecx
     jnz     .validate_addr
-    mov     ecx, INT32_MAX
+    mov     ecx, UINT32_MAX
 
 .validate_addr:
     ; check if address is NULL
@@ -942,6 +944,7 @@ SYM(x86_strlen_s):
 
 .fail:
     mov     eax, -1
+
     lea     esp, [ebp-8]
     pop     edi
     pop     esi
@@ -950,8 +953,8 @@ SYM(x86_strlen_s):
 
 ; --------------------------------------------------------
 ; x86_strlen
-;   purpose: thin wrapper around x86_strlen_s with no size cap
-;   input:   [ebp+4]  string buffer address (4 bytes)
+;   purpose: thin wrapper around x86_strlen_s with relaxed size cap
+;   input:   [esp+4]  string buffer address (4 bytes)
 ;   output:  eax = string length on success
 ;            eax = -1 on failure (null address, invalid or
 ;                  exceeded max length without null found)
@@ -960,8 +963,376 @@ SYM(x86_strlen_s):
 ; --------------------------------------------------------
 SYM(x86_strlen):
     mov     eax, [esp+4]        ; addr
-    push    dword INT32_MAX     ; max limit
+    push    dword UINT32_MAX    ; smax
     push    eax                 ; addr
     call    SYM(x86_strlen_s)
     add     esp, 8
+    ret
+
+; --------------------------------------------------------
+; x86_bzero
+;   purpose : securely zero a region of memory
+;   input   : [ebp+8]  address of memory region (4 bytes)
+;             [ebp+12] number of bytes to zero  (4 bytes)
+;   output  : eax = 0  on success
+;             eax = -1 on failure (null ptr or zero size)
+;   trashes : ecx, edx
+;   saves   : ebx, edi
+; --------------------------------------------------------
+SYM(x86_bzero):
+    push    ebp
+    mov     ebp, esp
+    push    ebx                 ; save callee saved [ebp-4]
+    push    edi                 ; save callee saved [ebp-8]
+
+    mov     edi, [ebp+8]        ; load address of memory region
+    mov     ecx, [ebp+12]       ; load number of bytes to zero
+
+    ; check if number of bytes to zero exceeds UINT32_MAX
+    cmp     ecx, UINT32_MAX
+    ja      .fail
+
+    ; check if number of bytes to zero is zero
+    test    ecx, ecx
+    jz      .fail
+
+    ; check if address is NULL
+    test    edi, edi
+    jz      .fail
+
+    test    edi, 3
+    jz      .body               ; already aligned, skip head entirely
+
+; process unaligned head bytes one at a time
+.unaligned:
+    mov     byte [edi], 0
+    inc     esi
+    dec     ecx
+    jz      .flush              ; finished zeroing, flush
+    test    esi, 3              ; check if aligned now
+    jz      .body
+    jmp     .unaligned
+
+.body:
+    mov     edx, edi            ; save original address for flush later
+    mov     ebx, ecx            ; save full byte count for flush
+
+    and     ecx, 3              ; remainder bytes (bottom 2 bits)
+    push    ecx                 ; save remainder for tail
+    mov     ecx, ebx
+    shr     ecx, 2              ; convert to dword count
+
+    xor     eax, eax
+    rep     stosd               ; zero dword chunks, edi advances
+
+.tail:
+    pop     ecx                 ; restore remainder
+    test    ecx, ecx
+    jz      .flush
+    rep     stosb               ; zero remaining bytes
+
+.flush:
+    mov     ecx, ebx            ; restore full byte count
+    shr     ecx, 6              ; number of full 64 byte cache lines
+    jz      .flush_tail
+
+.flush_loop:
+    clflush [edx]
+    add     edx, 64
+    dec     ecx
+    jnz     .flush_loop
+
+.flush_tail:
+    test    ebx, 63             ; any partial cache line?
+    jz      .done
+    clflush [edx]               ; flush the last partial line
+
+.done:
+    mfence                      ; ensures all writes are visible and completed
+
+    mov     eax, eax
+
+    pop     edi
+    pop     ebx
+    pop     ebp
+    ret
+
+.fail:
+    mov     eax, -1
+
+    pop     edi
+    pop     ebx
+    pop     ebp
+    ret
+
+; --------------------------------------------------------
+; x86_memxor_s
+;   purpose : XOR a source buffer into a destination buffer
+;             in place  (dest ^= src), with bounds check
+;   input   : [ebp+8]  address of destination buffer  (4 bytes)
+;             [ebp+12] size of destination buffer     (4 bytes)
+;             [ebp+16] address of source buffer       (4 bytes)
+;             [ebp+20] number of bytes to XOR         (4 bytes)
+;   output  : eax =  0 on success
+;             eax = -1 on failure (null ptr, zero size,
+;                                  size > UINT32_MAX,
+;                                  len > dest_cap)
+;   trashes : ecx, edx
+;   saves   : esi, edi
+; --------------------------------------------------------
+SYM(x86_memxor_s):
+    push    ebp
+    mov     ebp, esp
+    push    esi                 ; save callee saved [ebp-4]
+    push    edi                 ; save callee saved [ebp-8]
+
+    mov     edi, [ebp+8]        ; address of destination buffer
+    mov     eax, [ebp+12]       ; size of destination buffer
+    mov     esi, [ebp+16]       ; address of source buffer 
+    mov     ecx, [ebp+20]       ; number of bytes to XOR
+
+    ; check if number of bytes to XOR exceeds UINT32_MAX
+    cmp     ecx, UINT32_MAX
+    ja      .fail
+
+    ; check if number of bytes to XOR is zero
+    test    ecx, ecx
+    jz      .fail
+
+    ; check if counter is longer than dest buffer size
+    cmp     eax, ecx
+    jl      .fail
+
+    ; check if address is NULL
+    test    edi, edi
+    jz      .fail
+    test    esi, esi
+    jz      .fail
+
+    ; reset working register
+    xor     eax, eax
+
+    test    edi, 3
+    jz      .pre_body           ; already aligned, skip head entirely
+
+; process unaligned head bytes one at a time
+.unaligned_dest:
+    mov     al, [esi]           ; load src byte into register
+    xor     [edi], al           ; XOR register into dest buffer
+    inc     edi
+    inc     esi
+    dec     ecx
+    jz      .done               ; finished XORing?
+    test    esi, 3              ; check if aligned now
+    jz      .pre_body
+    jmp     .unaligned_dest
+
+.pre_body:
+    mov     edx, ecx            ; save full count
+    and     edx, 3              ; keep bottom 2 bits
+    cmp     ecx, 4
+    jl      .tail               ; less than 4 bytes left, skip dword loop
+    shr     ecx, 2              ; convert to dword count
+
+.body:
+    mov     eax, [esi]          ; load src dword into register
+    xor     [edi], eax          ; XOR register into dest buffer
+    add     esi, 4
+    add     edi, 4
+    dec     ecx
+    jnz     .body
+
+.tail:
+    test    edx, edx
+    jz      .done
+    mov     al, [esi]           ; load src byte into register
+    xor     [edi], al           ; XOR register into dest buffer
+    inc     esi
+    inc     edi
+    dec     edx
+    jnz     .tail
+
+.done:
+    xor     eax, eax
+
+    pop     edi
+    pop     esi
+    pop     ebp
+    ret
+
+.fail:
+    mov     eax, -1
+
+    pop     edi
+    pop     esi
+    pop     ebp
+    ret
+
+; --------------------------------------------------------
+; x86_memxor
+;   purpose: thin wrapper around x86_memxor with relaxed size cap
+;   input   : [esp+4]  address of destination buffer  (4 bytes)
+;             [esp+8]  address of source buffer       (4 bytes)
+;             [esp+12] number of bytes to XOR         (4 bytes)
+;   output  : eax =  0 on success
+;             eax = -1 on failure (null ptr, zero size,
+;                                  size > UINT32_MAX,
+;                                  len > dest_cap)
+;   trashes : ecx, edx
+;   saves   : esi, edi
+; --------------------------------------------------------
+SYM(x86_memxor):
+    mov     eax, [esp+4]        ; dest addr
+    mov     ecx, [esp+8]        ; src addr
+    mov     edx, [esp+12]       ; n
+    push    edx                 ; n
+    push    ecx                 ; src addr
+    push    dword UINT32_MAX    ; nmax
+    push    eax                 ; dest addr
+    call    SYM(x86_memxor_s)
+    add     esp, 16
+    ret
+
+; --------------------------------------------------------
+; x86_memswap_s
+;   purpose : swap two buffers in place, with bounds check
+;             (a <-> b)
+;   input   : [ebp+8]  address of left buffer       (4 bytes)
+;             [ebp+12] size of left buffer          (4 bytes)
+;             [ebp+16] address of right buffer      (4 bytes)
+;             [ebp+20] size of right buffer         (4 bytes)
+;             [ebp+24] number of bytes to swap      (4 bytes)
+;   output  : eax =  0 on success
+;             eax = -1 on failure (null ptr, zero size,
+;                                  size > UINT32_MAX,
+;                                  len > cap_a,
+;                                  len > cap_b)
+;   trashes : ecx, edx
+;   saves   : esi, edi
+; --------------------------------------------------------
+SYM(x86_memswap_s):
+    push    ebp
+    mov     ebp, esp
+    push    esi                 ; save callee saved [ebp-4]
+    push    edi                 ; save callee saved [ebp-8]
+
+    mov     edi, [ebp+8]        ; address of left buffer
+    mov     eax, [ebp+12]       ; size of left buffer
+    mov     esi, [ebp+16]       ; address of right buffer
+    mov     edx, [ebp+20]       ; size of right buffer
+    mov     ecx, [ebp+24]       ; number of bytes to swap
+
+    ; check if number of bytes to XOR exceeds UINT32_MAX
+    cmp     ecx, UINT32_MAX
+    ja      .fail
+
+    ; check if number of bytes to XOR is zero
+    test    ecx, ecx
+    jz      .fail
+
+    ; check if counter is longer than left and right buffer size
+    cmp     eax, ecx
+    jl      .fail
+
+    cmp     edx, ecx
+    jl      .fail
+
+    ; check if address is NULL
+    test    edi, edi
+    jz      .fail
+    test    esi, esi
+    jz      .fail
+
+    ; check if left buffer == right buffer
+    cmp     edi, esi
+    je      .done
+
+    ; reset working registers
+    xor     eax, eax
+    xor     edx, edx
+
+    test    edi, 3
+    jz      .pre_body           ; already aligned, skip head entirely
+
+; process unaligned head bytes one at a time
+.unaligned_lhs:
+    mov     al, [esi]           ; al      =  a
+    xor     al, [edi]           ; al      =  a ^ b
+    xor     [edi], al           ; [edi]   =  b ^ (a ^ b) = a
+    xor     [esi], al           ; [esi]   =  a ^ (a ^ b) = b
+    inc     edi
+    inc     esi
+    dec     ecx
+    jz      .done               ; finished XORing?
+    test    esi, 3              ; check if aligned now
+    jz      .pre_body
+    jmp     .unaligned_lhs
+
+.pre_body:
+    mov     edx, ecx            ; save full count
+    and     edx, 3              ; keep bottom 2 bits
+    cmp     ecx, 4
+    jl      .tail               ; less than 4 bytes left, skip dword loop
+    shr     ecx, 2              ; convert to dword count
+
+.body:
+    mov     eax, [esi]          ; eax     =  a
+    xor     eax, [edi]          ; eax     =  a ^ b
+    xor     [edi], eax          ; [edi]   =  b ^ (a ^ b) = a
+    xor     [esi], eax          ; [esi]   =  a ^ (a ^ b) = b
+    add     esi, 4
+    add     edi, 4
+    dec     ecx
+    jnz     .body
+
+.tail:
+    test    edx, edx
+    jz      .done
+    mov     al, [esi]           ; al      =  a
+    xor     al, [edi]           ; al      =  a ^ b
+    xor     [edi], al           ; [edi]   =  b ^ (a ^ b) = a
+    xor     [esi], al           ; [esi]   =  a ^ (a ^ b) = b
+    inc     esi
+    inc     edi
+    dec     edx
+    jnz     .tail
+
+.done:
+    xor     eax, eax
+
+    pop     edi
+    pop     esi
+    pop     ebp
+    ret
+
+.fail:
+    mov     eax, -1
+
+    pop     edi
+    pop     esi
+    pop     ebp
+    ret
+
+; --------------------------------------------------------
+; x86_memswap
+;   purpose : thin wrapper around x86_memswap_s with relaxed size cap
+;   input   : [esp+4]  address of left buffer    (4 bytes)
+;             [esp+8]  address of right buffer   (4 bytes)
+;             [esp+12] number of bytes to swap   (4 bytes)
+;   output  : eax =  0 on success
+;             eax = -1 on failure (null ptr, zero size, size > UINT32_MAX)
+;   trashes : eax, ecx, edx
+;   saves   : nothing
+; --------------------------------------------------------
+SYM(x86_memswap):
+    mov     eax, [esp+4]        ; left addr
+    mov     ecx, [esp+8]        ; right addr
+    mov     edx, [esp+12]       ; n
+    push    edx                 ; n
+    push    dword UINT32_MAX    ; nmax
+    push    ecx                 ; right addr
+    push    dword UINT32_MAX    ; nmax
+    push    eax                 ; left addr
+    call    SYM(x86_memswap_s)
+    add     esp, 16
     ret
