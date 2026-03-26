@@ -27,9 +27,8 @@ Each exported function is a **public dispatcher**. On first call:
 | Block % 16 == 0 & SSE2 available | `_sse2` |
 | Block % 8 == 0 & MMX available  | `_mmx`  |
 | Block % 4 == 0                   | `_dword`|
-| Otherwise                        | `_byte` |
 
-- SIMD paths (`_sse2`, `_mmx`) are **private** and fall back to the byte loop for any remaining bytes.
+- All SIMD paths (`_sse2`, `_mmx`) and `_dword` path ultimately **fall back to the byte loop** for any remaining bytes.
 - Public function handles **all dispatch logic**; private implementations **do not detect CPU features**.
 - SSE2 uses `lddqu` instead of `movdqu` when SSE3 is present for unaligned loads.
 
@@ -93,11 +92,11 @@ all functions return `-1` on failure. failure conditions: null address, zero siz
 
 ## design
 
-- Safe variant is always the real implementation.  
+- Safe variant is always the real implementation.
 - Base variant forwards to safe variant with `NO_CAP` as default cap.  
-- CPUID queried once on first call; results cached for all subsequent dispatches.  
-- Dispatch chooses highest viable SIMD path where block is multiple of register width.  
-- Comparison functions return exact byte difference: negative if lhs < rhs, zero if equal, positive if lhs > rhs.  
+- CPUID queried once on first call; results cached for all subsequent dispatches.
+- Dispatch chooses highest viable SIMD path where block is multiple of register width.
+- Comparison functions return exact byte difference: negative if lhs < rhs, zero if equal, positive if lhs > rhs.
 - No heap, no globals except CPUID cache, no persistent state.
 
 > **Note:** Optimization beyond SIMD is not yet added. The library layout, including function order and memory layout, may be heavily modified in future updates to accommodate further optimizations.
