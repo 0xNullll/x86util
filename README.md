@@ -1,31 +1,43 @@
 # x86util
 
-a minimal x86 string and memory utility library in pure assembly — no dependencies, no OS calls. links anywhere.
+A minimal x86 string and memory utility library in pure assembly — no dependencies, no OS calls. Can link anywhere.
 
-## overview
+---
 
-hand written x86 32-bit assembly implementing common string and memory operations from scratch. no external dependencies, no standard library. designed to link into any Win32, ELF32, or MACHO32 target without modification.
+## Overview
 
-every function has a safe `_s` variant with explicit bounds checking and null address validation. the safe variant is always the core implementation — the base function is a thin wrapper that forwards with relaxed defaults.
+Hand-written x86 32-bit assembly implementing common string and memory operations from scratch.
 
-## dispatch model
+- No external dependencies, no standard library.
+- Designed to link into any **Win32**, **ELF32**, or **MACHO32** target without modification.
+- Every function has a safe `_s` variant with **explicit bounds checking** and **null pointer validation**.
+- Safe variant is the core implementation; base variant is a thin wrapper forwarding with relaxed defaults.
 
-each exported function is a **public dispatcher**. on first call, CPUID is queried once and cached. the dispatcher selects the fastest available implementation based on the block size and CPU flags:
+---
 
-- if the block is a multiple of **16 bytes** and SSE2 is available → `_sse2` path
-- else if the block is a multiple of **8 bytes** and MMX is available → `_mmx` path
-- else if the block is a multiple of **4 bytes** → `_dword` path
-- else → `_byte` path (scalar byte loop)
+## Dispatch Model
 
-each SIMD path (`_sse2`, `_mmx`) is a **private implementation** that falls back to the byte loop for any residual tail bytes not covered by the wider register. the public function owns all dispatch logic — the private implementations do no detection of their own.
+Each exported function is a **public dispatcher**. On first call:
 
-CPUID is queried once on first call and cached. all subsequent dispatches read from the cache with no overhead.
+1. CPUID is queried and cached.
+2. Dispatcher selects the fastest implementation based on block size and CPU features:
 
-> the SSE2 path uses `lddqu` instead of `movdqu` for unaligned loads when SSE3 is also present.
+| Condition | Path |
+|-----------|------|
+| Block % 16 == 0 & SSE2 available | `_sse2` |
+| Block % 8 == 0 & MMX available  | `_mmx`  |
+| Block % 4 == 0                   | `_dword`|
+| Otherwise                        | `_byte` |
 
-## build and install
+- SIMD paths (`_sse2`, `_mmx`) are **private** and fall back to the byte loop for any remaining bytes.
+- Public function handles **all dispatch logic**; private implementations **do not detect CPU features**.
+- SSE2 uses `lddqu` instead of `movdqu` when SSE3 is present for unaligned loads.
 
-### clone the repository
+---
+
+## Build & Install
+
+### Clone the repository
 
 ```bash
 git clone https://github.com/0xNullll/x86util
@@ -81,16 +93,16 @@ all functions return `-1` on failure. failure conditions: null address, zero siz
 
 ## design
 
-- safe variant is always the real implementation
-- base variant forwards to safe variant with `INT32_MAX` as the default cap
-- CPUID queried once on first call, results cached for all subsequent dispatch decisions
-- dispatch selects the highest viable SIMD path where the block is a multiple of the register width
-- comparison functions return exact byte difference — negative if lhs < rhs, zero if equal, positive if lhs > rhs
-- no heap, no globals beyond CPUID cache, no state
+- Safe variant is always the real implementation.  
+- Base variant forwards to safe variant with `NO_CAP` as default cap.  
+- CPUID queried once on first call; results cached for all subsequent dispatches.  
+- Dispatch chooses highest viable SIMD path where block is multiple of register width.  
+- Comparison functions return exact byte difference: negative if lhs < rhs, zero if equal, positive if lhs > rhs.  
+- No heap, no globals except CPUID cache, no persistent state.
+
+> **Note:** Optimization beyond SIMD is not yet added. The library layout, including function order and memory layout, may be heavily modified in future updates to accommodate further optimizations.
 
 ### optimization coverage
-
-> **note:** SIMD paths are being added incrementally. all functions currently have a working base x86 path.
 
 | function | byte loop | dword | MMX | SSE2 |
 |---|---|---|---|---|
@@ -149,8 +161,12 @@ x86util/
 ```
 
 ## tests
-
-each function has a dedicated test file covering valid input, null addresses, size violations, boundary conditions, and byte verification.
+Each function has dedicated tests covering:
+- Valid input
+- Null pointers
+- Size violations
+- Boundary conditions
+- Byte-level correctness
 
 ### build the library
 
