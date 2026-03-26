@@ -164,6 +164,7 @@ Each function has dedicated tests covering:
 - Valid input
 - Null pointers
 - Size violations
+- Alignment conditions
 - Boundary conditions
 - Byte-level correctness
 
