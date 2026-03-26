@@ -26,19 +26,17 @@
 ;     x86_strcpy_s  - x86_strcpy with explicit size cap (safe version)
 ;     x86_strlen    - get length of a null terminated string
 ;     x86_strlen_s  - x86_strlen with explicit size cap (safe version)
-;     x86_bzero       - zero out a memory region
-;     x86_memxor      - XOR two memory regions, store result in left
-;     x86_memxor_s    - x86_memxor with explicit size cap (safe version)
-;     x86_memswap     - swap two memory regions in place
-;     x86_memswap_s   - x86_memswap with explicit size cap (safe version)
-;
-;   additional exports (functions not yet implemented)
-;     x86_memchr      - find first occurrence of a byte in memory
-;     x86_memchr_s    - x86_memchr with explicit size cap (safe version)
-;     x86_strchr      - find first occurrence of a character in string
-;     x86_strchr_s    - x86_strchr with explicit size cap (safe version)
-;     x86_checksum32  - compute 32-bit checksum over a memory block
-;     x86_checksum32_s- x86_checksum32 with explicit size cap (safe version)
+;     x86_bzero     - zero out a memory region
+;     x86_memxor    - XOR two memory regions, store result in left
+;     x86_memxor_s  - x86_memxor with explicit size cap (safe version)
+;     x86_memswap   - swap two memory regions in place
+;     x86_memswap_s - x86_memswap with explicit size cap (safe version)
+;     x86_memchr    - find first occurrence of a byte in memory
+;     x86_memrchr   - find last occurrence of a byte in memory
+;     x86_strchr    - find first occurrence of a character in string
+;     x86_strchr_s  - x86_strchr with explicit size cap (safe version)
+;     x86_strrchr   - find last occurrence of a character in string
+;     x86_strrchr   - x86_strrchr with explicit size cap (safe version)
 ; ============================================================
 
 BITS 32
@@ -73,11 +71,79 @@ global SYM(x86_memxor_s)
 global SYM(x86_memxor)
 global SYM(x86_memswap_s)
 global SYM(x86_memswap)
+global SYM(x86_memchr)
+global SYM(x86_memrchr)
+global SYM(x86_strchr_s)
+global SYM(x86_strchr)
+global SYM(x86_strrchr_s)
+global SYM(x86_strrchr)
 
-%define UINT32_MAX 0x7FFFFFFF
 %define INT32_MIN 0x80000000
+%define NO_CAP    0xffffffff
+
+section .data
+    cpu_features    dd 0       ; bitfield: 0=MMX bit1=SSE2 bit2=SSE3
+    cpu_initialized dd 0       ; 0 = not initialized, 1 = initialized
 
 section .text
+
+; --------------------------------------------------------
+; x86_lazy_cpuid_init (private)
+; --------------------------------------------------------
+;   purpose: lazily initializes cpu_features global variable
+;            checks CPU once and sets feature bits
+;   input:   none
+;   output:  cpu_features bits set
+;               bit 0 = MMX   (EDX bit 23)
+;               bit 1 = SSE2  (EDX bit 26)
+;               bit 2 = SSE3  (ECX bit 0)
+;   trashes: ecx, edx
+;   saves:   ebx, esi, edi
+; --------------------------------------------------------
+SYM(x86_lazy_cpuid_init):
+    push    ebp
+    mov     ebp, esp
+    push    ebx
+    push    esi
+    push    edi
+
+    ; check if already initialized
+    mov     eax, [cpu_initialized]
+    test    eax, eax
+    jnz     .done               ; already initialized
+
+    ; cpuid function 1: feature flags in edx/ecx
+    mov     eax, 1
+    cpuid
+
+    ; extract feature bits into ebx, leave ecx intact for SSE3 check
+    xor     ebx, ebx            ; accumulate result in ebx
+
+    bt      edx, 23             ; MMX   (EDX bit 23)
+    jnc     .check_sse2
+    or      ebx, 1              ; bit 0 = MMX
+
+.check_sse2:
+    bt      edx, 26             ; SSE2  (EDX bit 26)
+    jnc     .check_sse3
+    or      ebx, 2              ; bit 1 = SSE2
+
+.check_sse3:
+    bt      edx, 0              ; SSE3  (ECX bit 0)
+    jnc     .store_features
+    or      ebx, 4              ; bit 2 = SSE3
+
+.store_features:
+    mov     [cpu_features], ebx
+    mov     dword [cpu_initialized], 1
+
+.done:
+    pop     edi
+    pop     esi
+    pop     ebx
+    mov     esp, ebp
+    pop     ebp
+    ret
 
 ; --------------------------------------------------------
 ; x86_memset_s
@@ -100,18 +166,16 @@ SYM(x86_memset_s):
     push    edi                 ; save callee saved [ebp-8]
     sub     esp, 8              ; local var [ebp-12] + 4 bytes padding
 
+    call    SYM(x86_lazy_cpuid_init)
+
     mov     esi, [ebp+8]        ; load buffer address
     mov     eax, [ebp+12]       ; load buffer size
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if buffer size and counter exceeds UINT32_MAX
-    cmp     eax, UINT32_MAX
-    ja      .fail
-    cmp     ecx, UINT32_MAX
-    ja      .fail
-
-    ; check if buffer size is zero
+    ; check if buffer size and counter are zero
     test    eax, eax
+    jz      .fail
+    test    ecx, ecx
     jz      .fail
 
     ; check if counter is longer than buffer size
@@ -203,7 +267,7 @@ SYM(x86_memset):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; fill byte
-    push    dword UINT32_MAX    ; nmax
+    push    dword NO_CAP        ; nmax
     push    eax                 ; addr
     call    SYM(x86_memset_s)
     add     esp, 16
@@ -237,14 +301,10 @@ SYM(x86_memcmp_s):
     mov     edi, [ebp+16]       ; load right buffer address
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if left buffer size and counter exceeds UINT32_MAX
-    cmp     eax, UINT32_MAX
-    ja      .fail
-    cmp     ecx, UINT32_MAX
-    ja      .fail
-
-    ; check if left buffer size is zero
+    ; check if buffer size or counter is zero
     test    eax, eax
+    jz      .fail
+    test    ecx, ecx
     jz      .fail
 
     ; check if counter is longer than left buffer size
@@ -352,7 +412,7 @@ SYM(x86_memcmp):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; right addr
-    push    dword UINT32_MAX    ; nmax
+    push    dword NO_CAP        ; nmax
     push    eax                 ; left addr
     call    SYM(x86_memcmp_s)
     add     esp, 16
@@ -384,14 +444,10 @@ SYM(x86_memcpy_s):
     mov     esi, [ebp+16]       ; load src buffer address
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if dest buffer size and counter exceeds UINT32_MAX
-    cmp     eax, UINT32_MAX
-    ja      .fail
-    cmp     ecx, UINT32_MAX
-    ja      .fail
-
-    ; check if dest buffer size is zero
+    ; check if dest buffer size or counter is zero
     test    eax, eax
+    jz      .fail
+    test    ecx, ecx
     jz      .fail
 
     ; check if counter is longer than dest buffer size
@@ -472,7 +528,7 @@ SYM(x86_memcpy):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; src addr
-    push    dword UINT32_MAX     ; nmax
+    push    dword NO_CAP        ; nmax
     push    eax                 ; dest addr
     call    SYM(x86_memcpy_s)
     add     esp, 16
@@ -505,14 +561,10 @@ SYM(x86_memmove_s):
     mov     esi, [ebp+16]       ; load src buffer address
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if dest buffer size and counter exceeds UINT32_MAX
-    cmp     eax, UINT32_MAX
-    ja      .fail
-    cmp     ecx, UINT32_MAX
-    ja      .fail
-
-    ; check if dest buffer size is zero
+    ; check if buffer size or counter is zero
     test    eax, eax
+    jz      .fail
+    test    ecx, ecx
     jz      .fail
 
     ; check if counter is longer than dest buffer size
@@ -618,7 +670,7 @@ SYM(x86_memmove):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; src addr
-    push    dword UINT32_MAX    ; nmax
+    push    dword NO_CAP        ; nmax
     push    eax                 ; dest addr
     call    SYM(x86_memmove_s)
     add     esp, 16
@@ -652,17 +704,13 @@ SYM(x86_strcmp_s):
     mov     edi, [ebp+16]       ; load right buffer address
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if left string size and counter exceeds UINT32_MAX
-    cmp     eax, UINT32_MAX
-    ja      .fail
-    cmp     ecx, UINT32_MAX
-    ja      .fail
-
-    ; check if dest string size is zero
+    ; check if left buffer size or counter is zero
     test    eax, eax
     jz      .fail
+    test    ecx, ecx
+    jz      .fail
 
-    ; check if counter is longer than left string size
+    ; check if counter is longer than left buffer size
     cmp     eax, ecx
     jl      .fail
 
@@ -734,7 +782,7 @@ SYM(x86_strcmp):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; right addr
-    push    dword UINT32_MAX    ; smax
+    push    dword NO_CAP        ; smax
     push    eax                 ; left addr
     call    SYM(x86_strcmp_s)
     add     esp, 16
@@ -766,14 +814,10 @@ SYM(x86_strcpy_s):
     mov     esi, [ebp+16]       ; load src string address
     mov     ecx, [ebp+20]       ; load counter
 
-    ; check if dest string size and counter exceeds UINT32_MAX
-    cmp     eax, UINT32_MAX
-    ja      .fail
-    cmp     ecx, UINT32_MAX
-    ja      .fail
-
-    ; check if dest string size is zero
+    ; check if dest string size or counter is zero
     test    eax, eax
+    jz      .fail
+    test    ecx, ecx
     jz      .fail
 
     ; check if counter is longer than dest string size
@@ -835,7 +879,7 @@ SYM(x86_strcpy):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; src addr
-    push    dword UINT32_MAX    ; smax
+    push    dword NO_CAP        ; smax
     push    eax                 ; dest addr
     call    SYM(x86_strcpy_s)
     add     esp, 16
@@ -862,16 +906,10 @@ SYM(x86_strlen_s):
     mov     esi, [ebp+8]        ; load string buffer address
     mov     ecx, [ebp+12]       ; load max string length
 
-    ; check if max length exceeds UINT32_MAX
-    cmp     ecx, UINT32_MAX
-    ja      .fail
-
-    ; check if max length is zero, fallback to UINT32_MAX
+    ; check if max length is zero
     test    ecx, ecx
-    jnz     .validate_addr
-    mov     ecx, UINT32_MAX
+    jz      .fail
 
-.validate_addr:
     ; check if address is NULL
     test    esi, esi
     jz      .fail
@@ -963,7 +1001,7 @@ SYM(x86_strlen_s):
 ; --------------------------------------------------------
 SYM(x86_strlen):
     mov     eax, [esp+4]        ; addr
-    push    dword UINT32_MAX    ; smax
+    push    dword NO_CAP        ; smax
     push    eax                 ; addr
     call    SYM(x86_strlen_s)
     add     esp, 8
@@ -987,10 +1025,6 @@ SYM(x86_bzero):
 
     mov     edi, [ebp+8]        ; load address of memory region
     mov     ecx, [ebp+12]       ; load number of bytes to zero
-
-    ; check if number of bytes to zero exceeds UINT32_MAX
-    cmp     ecx, UINT32_MAX
-    ja      .fail
 
     ; check if number of bytes to zero is zero
     test    ecx, ecx
@@ -1075,7 +1109,6 @@ SYM(x86_bzero):
 ;             [ebp+20] number of bytes to XOR         (4 bytes)
 ;   output  : eax =  0 on success
 ;             eax = -1 on failure (null ptr, zero size,
-;                                  size > UINT32_MAX,
 ;                                  len > dest_cap)
 ;   trashes : ecx, edx
 ;   saves   : esi, edi
@@ -1091,11 +1124,9 @@ SYM(x86_memxor_s):
     mov     esi, [ebp+16]       ; address of source buffer 
     mov     ecx, [ebp+20]       ; number of bytes to XOR
 
-    ; check if number of bytes to XOR exceeds UINT32_MAX
-    cmp     ecx, UINT32_MAX
-    ja      .fail
-
-    ; check if number of bytes to XOR is zero
+    ; check if dest buffer size or number of bytes to XOR is zero
+    test    eax, eax
+    jz      .fail
     test    ecx, ecx
     jz      .fail
 
@@ -1176,7 +1207,6 @@ SYM(x86_memxor_s):
 ;             [esp+12] number of bytes to XOR         (4 bytes)
 ;   output  : eax =  0 on success
 ;             eax = -1 on failure (null ptr, zero size,
-;                                  size > UINT32_MAX,
 ;                                  len > dest_cap)
 ;   trashes : ecx, edx
 ;   saves   : esi, edi
@@ -1187,7 +1217,7 @@ SYM(x86_memxor):
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
     push    ecx                 ; src addr
-    push    dword UINT32_MAX    ; nmax
+    push    dword NO_CAP        ; nmax
     push    eax                 ; dest addr
     call    SYM(x86_memxor_s)
     add     esp, 16
@@ -1203,8 +1233,7 @@ SYM(x86_memxor):
 ;             [ebp+20] size of right buffer         (4 bytes)
 ;             [ebp+24] number of bytes to swap      (4 bytes)
 ;   output  : eax =  0 on success
-;             eax = -1 on failure (null ptr, zero size,
-;                                  size > UINT32_MAX,
+;             eax = -1 on failure (null ptr, zero sizes,
 ;                                  len > cap_a,
 ;                                  len > cap_b)
 ;   trashes : ecx, edx
@@ -1222,11 +1251,9 @@ SYM(x86_memswap_s):
     mov     edx, [ebp+20]       ; size of right buffer
     mov     ecx, [ebp+24]       ; number of bytes to swap
 
-    ; check if number of bytes to XOR exceeds UINT32_MAX
-    cmp     ecx, UINT32_MAX
-    ja      .fail
-
-    ; check if number of bytes to XOR is zero
+    ; check if left buffer size or number of bytes to swap is zero
+    test    eax, eax
+    jz      .fail
     test    ecx, ecx
     jz      .fail
 
@@ -1320,7 +1347,7 @@ SYM(x86_memswap_s):
 ;             [esp+8]  address of right buffer   (4 bytes)
 ;             [esp+12] number of bytes to swap   (4 bytes)
 ;   output  : eax =  0 on success
-;             eax = -1 on failure (null ptr, zero size, size > UINT32_MAX)
+;             eax = -1 on failure (null ptr, zero size)
 ;   trashes : eax, ecx, edx
 ;   saves   : nothing
 ; --------------------------------------------------------
@@ -1329,10 +1356,393 @@ SYM(x86_memswap):
     mov     ecx, [esp+8]        ; right addr
     mov     edx, [esp+12]       ; n
     push    edx                 ; n
-    push    dword UINT32_MAX    ; nmax
+    push    dword NO_CAP        ; nmax
     push    ecx                 ; right addr
-    push    dword UINT32_MAX    ; nmax
+    push    dword NO_CAP        ; nmax
     push    eax                 ; left addr
     call    SYM(x86_memswap_s)
     add     esp, 16
+    ret
+
+; --------------------------------------------------------
+; x86_memchr
+;   purpose : find first occurrence of a byte in a memory
+;             region, scanning forward from the start
+;   input   : [ebp+8]  address of memory region      (4 bytes)
+;             [ebp+12] byte to search for            (4 bytes)
+;             [ebp+16] number of bytes to search     (4 bytes)
+;   output  : eax = pointer to first match on success
+;             eax = (null ptr, zero size, NULL if byte not found)
+;   trashes : ecx, edx
+;   saves   : esi
+; --------------------------------------------------------
+SYM(x86_memchr):
+    push    ebp
+    mov     ebp, esp
+    push    ebx                 ; save callee saved [ebp-4]
+    push    esi                 ; save callee saved [ebp-8]
+    sub     esp, 8              ; local var [ebp-12] + 4 bytes padding
+
+    mov     esi, [ebp+8]        ; address of memory region
+    movzx   eax, byte [ebp+12]  ; byte to search for
+    mov     ecx, [ebp+16]       ; number of bytes to search
+
+    ; check if number of bytes to search is zero
+    test    ecx, ecx
+    jz      .fail
+
+    ; check if address of memory region is NULL
+    test    esi, esi
+    jz      .fail
+
+    imul    eax, 0x01010101     ; broadcast to all 4 bytes -> EBX
+    mov     ebx, eax
+
+    test    esi, 3
+    jz      .pre_body           ; already aligned, skip head entirely
+
+; process unaligned head bytes one at a time
+.unaligned:
+    cmp     [esi], bl
+    je      .done
+    inc     esi
+    dec     ecx
+    jz      .fail               ; hit number of bytes to search, byte not found
+    test    esi, 3              ; check if aligned now
+    jz      .pre_body
+    jmp     .unaligned
+
+.pre_body:
+    mov     dword [ebp-12], ecx ; save full count
+    and     dword [ebp-12], 3   ; keep bottom 2 bits
+    cmp     ecx, 4
+    jl      .pre_tail           ; less than 4 bytes left, skip dword loop
+    shr     ecx, 2              ; convert to dword count
+
+.body:
+    mov     edx, dword [esi]    ; load dword
+    xor     edx, ebx            ; XOR with broadcast
+    mov     eax, edx            ; copy for subtraction
+    not     eax                 ; ~val
+    sub     edx, 0x01010101     ; val - 0x01010101
+    and     eax, edx            ; combine
+    and     eax, 0x80808080     ; isolate high bits of zero bytes
+    test    eax, eax
+    jnz     .find_byte          ; match detected in this dword
+
+    add     esi, 4
+    dec     ecx
+    jnz     .body
+
+.pre_tail:
+    mov     ecx, [ebp-12]
+
+.tail:
+    test    ecx, ecx
+    jz      .fail               ; hit number of bytes to search, byte not found
+    cmp     [esi], bl
+    je      .done
+    inc     esi
+    dec     ecx
+    jmp     .tail
+
+; match found in dword, locate exact byte position
+.find_byte:
+    bsf     eax, eax            ; find lowest set bit
+    shr     eax, 3              ; divide by 8 = byte offset within dword
+    add     esi, eax            ; advance to null byte position
+
+.done:
+    mov     eax, esi            ; return located byte address
+
+    lea     esp, [ebp-8]
+    pop     esi
+    pop     ebx
+    pop     ebp
+    ret
+
+.fail:
+    mov     eax, -1
+
+    lea     esp, [ebp-8]
+    pop     esi
+    pop     ebx
+    pop     ebp
+    ret
+
+; --------------------------------------------------------
+; x86_memrchr
+;   purpose : find last occurrence of a byte in a memory
+;             region, scanning backwards from the end
+;   input   : [ebp+8]  address of memory region      (4 bytes)
+;             [ebp+12] byte to search for            (4 bytes)
+;             [ebp+16] number of bytes to search     (4 bytes)
+;   output  : eax = pointer to last match on success
+;             eax = (null ptr, zero size, NULL if byte not found)
+;   trashes : ecx, edx
+;   saves   : esi
+; --------------------------------------------------------
+SYM(x86_memrchr):
+    push    ebp
+    mov     ebp, esp
+    push    ebx                 ; save callee saved [ebp-4]
+    push    esi                 ; save callee saved [ebp-8]
+    sub     esp, 8              ; local var [ebp-12] + 4 bytes padding
+
+    mov     esi, [ebp+8]        ; address of memory region
+    movzx   eax, byte [ebp+12]  ; byte to search for
+    mov     ecx, [ebp+16]       ; number of bytes to search
+
+    ; check if number of bytes to search is zero
+    test    ecx, ecx
+    jz      .fail
+
+    ; check if address of memory region is NULL
+    test    esi, esi
+    jz      .fail
+
+    imul    eax, 0x01010101     ; broadcast to all 4 bytes -> ebx
+    mov     ebx, eax
+
+    add     esi, ecx
+    dec     esi                 ; point to last byte (base + len - 1)
+
+    test    esi, 3
+    jz      .pre_body           ; already aligned, skip head entirely
+
+; process unaligned tail bytes one at a time (scanning backwards)
+.unaligned:
+    cmp     [esi], bl
+    je      .done
+    dec     esi
+    dec     ecx
+    jz      .fail               ; exhausted all bytes, byte not found
+    mov     eax, esi
+    and     eax, 3
+    cmp     eax, 3              ; check if esi is now at end of a dword
+    jne     .unaligned
+
+.pre_body:
+    mov     dword [ebp-12], ecx ; save remaining count
+    and     dword [ebp-12], 3   ; keep bottom 2 bits (tail remainder)
+    cmp     ecx, 4
+    jl      .pre_tail           ; less than 4 bytes left, skip dword loop
+    sub     esi, 3              ; point to start of current dword
+    shr     ecx, 2              ; convert to dword count
+
+.body:
+    mov     edx, dword [esi]    ; load dword
+    xor     edx, ebx            ; XOR with broadcast (target bytes -> 0x00)
+    mov     eax, edx            ; copy for trick
+    not     eax                 ; ~val
+    sub     edx, 0x01010101     ; val - 0x01010101
+    and     eax, edx            ; combine
+    and     eax, 0x80808080     ; isolate high bits of zero bytes
+    test    eax, eax
+    jnz     .find_byte          ; match detected in this dword
+
+    sub     esi, 4
+    dec     ecx
+    jnz     .body
+
+.pre_tail:
+    mov     ecx, [ebp-12]
+
+.tail:
+    test    ecx, ecx
+    jz      .fail               ; exhausted all bytes, byte not found
+    cmp     [esi], bl
+    je      .done
+    dec     esi
+    dec     ecx
+    jmp     .tail
+
+; match found in dword, locate exact byte position
+.find_byte:
+    bsr     eax, eax            ; highest set bit -> last matching byte
+    shr     eax, 3              ; divide by 8 = byte offset within dword
+    add     esi, eax            ; point to matching byte
+
+.done:
+    mov     eax, esi            ; return located byte address
+
+    lea     esp, [ebp-8]
+    pop     esi
+    pop     ebx
+    pop     ebp
+    ret
+
+.fail:
+    mov     eax, -1
+
+    lea     esp, [ebp-8]
+    pop     esi
+    pop     ebx
+    pop     ebp
+    ret
+
+
+; --------------------------------------------------------
+; x86_strchr_s
+;   purpose : find first occurrence of a byte in a string buffer, 
+;             scanning forward from the start
+;   input   : [ebp+8]  address of string buffer     (4 bytes)
+;             [ebp+12] byte to search for           (4 bytes)
+;             [ebp+16] max string length            (4 bytes)
+;   output  : eax = pointer to first match on success
+;             eax = -1 (null ptr, zero size, hit NULL termination with no match, NULL if byte not found)
+;   trashes : ecx, edx
+;   saves   : edi
+; --------------------------------------------------------
+SYM(x86_strchr_s):
+    push    ebp
+    mov     ebp, esp
+    push    edi                 ; save callee saved [ebp-4]
+
+    mov     edi, [ebp+8]        ; address of buffer string
+    movzx   eax, byte [ebp+12]  ; byte to search for
+    mov     ecx, [ebp+16]       ; max string length
+
+    ; check if max string length is zero
+    test    ecx, ecx
+    jz      .fail
+
+    ; check if address of memory region is NULL
+    test    edi, edi
+    jz      .fail
+
+    xor     edx, edx            ; null scan byte
+
+.loop:
+    cmp     [edi], al
+    je      .done
+    cmp     [edi], dl
+    je      .fail               ; hit null termination, byte not found
+    inc     edi
+    dec     ecx
+    test    ecx, ecx
+    jz      .fail               ; hit number of bytes to search, byte not found
+    jmp     .loop
+
+.done:
+    mov     eax, edi            ; return located byte address
+
+    pop     edi
+    pop     ebp
+    ret
+
+.fail:
+    mov     eax, -1
+
+    pop     edi
+    pop     ebp
+    ret
+
+; --------------------------------------------------------
+; x86_strchr
+;   purpose : thin wrapper around x86_strchr with relaxed size cap
+;   input   : [ebp+4]  address of string buffer     (4 bytes)
+;             [ebp+8]  byte to search for           (4 bytes)
+;   output  : eax =  pointer to first match on success
+;             eax = -1 (null ptr, zero size, hit NULL termination with no match, NULL if byte not found)
+;   trashes : eax, ecx
+;   saves   : nothing
+; --------------------------------------------------------
+SYM(x86_strchr):
+    mov     eax, [esp+4]        ; addr
+    mov     ecx, [esp+8]        ; n
+    push    ecx                 ; n
+    push    dword NO_CAP        ; smax
+    push    ecx                 ; addr
+    call    SYM(x86_strchr_s)
+    add     esp, 12
+    ret
+
+; --------------------------------------------------------
+; x86_strrchr_s
+;   purpose : find last occurrence of a byte in a string buffer, 
+;             scanning forward from the start and tracking the last match
+;   input   : [ebp+8]  address of string buffer     (4 bytes)
+;             [ebp+12] byte to search for           (4 bytes)
+;             [ebp+16] max string length            (4 bytes)
+;   output  : eax = pointer to last match on success
+;             eax = -1 (null ptr, zero size, hit NULL termination with no match, NULL if byte not found)
+;   trashes : ecx, edx
+;   saves   : edx, esi, edi
+; --------------------------------------------------------
+SYM(x86_strrchr_s):
+    push    ebp
+    mov     ebp, esp
+    push    edx                 ; save callee saved [ebp-4]
+    push    esi                 ; save callee saved [ebp-8]
+    push    edi                 ; save callee saved [ebp-12]
+
+    mov     esi, [ebp+8]        ; address of buffer string
+    movzx   eax, byte [ebp+12]  ; byte to search for
+    mov     ecx, [ebp+16]       ; max string length
+
+    ; check if max string length is zero
+    test    ecx, ecx
+    jz      .fail
+
+    ; check if address of memory region is NULL
+    test    esi, esi
+    jz      .fail
+
+    xor     edi, edi            ; no match yet
+    xor     edx, edx            ; null scan byte
+
+.loop:
+    cmp     [esi], al
+    jne     .check_null
+    mov     edi, esi            ; save address of match
+
+.check_null:
+    cmp     [esi], dl
+    je      .done               ; hit null termination
+    inc     esi
+    dec     ecx
+    test    ecx, ecx
+    jz      .done               ; hit number of bytes to search
+    jmp     .loop
+
+.done:
+    cmp     edi, 0
+    je      .fail               ; found any match?
+
+    mov     eax, edi            ; return located byte address
+
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ebp
+    ret
+
+.fail:
+    mov     eax, -1
+
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ebp
+    ret
+
+; --------------------------------------------------------
+; x86_strrchr
+;   purpose : thin wrapper around x86_strchr with relaxed size cap
+;   input   : [ebp+4]  address of string buffer     (4 bytes)
+;             [ebp+8]  byte to search for           (4 bytes)
+;   output  : eax =  pointer to first match on success
+;             eax = -1 (null ptr, zero size, hit NULL termination with no match, NULL if byte not found)
+;   trashes : eax, ecx
+;   saves   : nothing
+; --------------------------------------------------------
+SYM(x86_strrchr):
+    mov     eax, [esp+4]        ; addr
+    mov     ecx, [esp+8]        ; n
+    push    ecx                 ; n
+    push    dword NO_CAP        ; smax
+    push    ecx                 ; addr
+    call    SYM(x86_strrchr_s)
+    add     esp, 12
     ret

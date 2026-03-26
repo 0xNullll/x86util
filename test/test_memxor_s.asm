@@ -4,16 +4,15 @@
 ;   case 1:  null dest, expect -1
 ;   case 2:  null src, expect -1
 ;   case 3:  zero size, expect -1
-;   case 4:  size exceeds INT32_MAX, expect -1
-;   case 5:  zero dest_cap, expect -1
-;   case 6:  len > dest_cap, expect -1
-;   case 7:  len == dest_cap (exact fit), expect 0 and correct result
-;   case 8:  len < dest_cap, expect 0 and correct result
-;   case 9:  valid large buffer, expect 0 and correct result
-;   case 10: dest == src (self XOR), expect 0 and all zeroed
-;   case 11: unaligned dest, expect 0 and correct result
-;   case 12: tail test (7 bytes), expect 0 and correct result
-;   case 13: zero src (dest unchanged), expect 0 and dest unchanged
+;   case 4:  zero dest_cap, expect -1
+;   case 5:  len > dest_cap, expect -1
+;   case 6:  len == dest_cap (exact fit), expect 0 and correct result
+;   case 7:  len < dest_cap, expect 0 and correct result
+;   case 8:  valid large buffer, expect 0 and correct result
+;   case 9: dest == src (self XOR), expect 0 and all zeroed
+;   case 10: unaligned dest, expect 0 and correct result
+;   case 11: tail test (7 bytes), expect 0 and correct result
+;   case 12: zero src (dest unchanged), expect 0 and dest unchanged
 ;   build  : nasm -w+all -D WINDOWS -f win32   test_memxor_s.asm -o test_memxor_s.obj
 ;            nasm -w+all -D LINUX   -f elf32   test_memxor_s.asm -o test_memxor_s.obj
 ;            nasm -w+all -D MACOS   -f macho32 test_memxor_s.asm -o test_memxor_s.obj
@@ -31,8 +30,6 @@ BITS 32
 %else
     %define SYM(x) x
 %endif
-
-%define UINT32_MAX 0x7FFFFFFF
 
 global  SYM(main)
 extern  SYM(x86_memxor_s)
@@ -116,18 +113,7 @@ SYM(main):
     cmp     eax, -1
     jne     .fail_case3
 
-    ; ---- case 4: size exceeds INT32_MAX, expect -1 ----
-    push    INT32_MAX + 1                   ; len
-    push    small_src                       ; src
-    push    small_size                      ; dest_cap
-    push    small_dst                       ; dest
-    call    SYM(x86_memxor_s)
-    add     esp, 16
-
-    cmp     eax, -1
-    jne     .fail_case4
-
-    ; ---- case 5: zero dest_cap, expect -1 ----
+    ; ---- case 4: zero dest_cap, expect -1 ----
     push    small_size                      ; len
     push    small_src                       ; src
     push    0                               ; zero dest_cap
@@ -136,9 +122,9 @@ SYM(main):
     add     esp, 16
 
     cmp     eax, -1
-    jne     .fail_case5
+    jne     .fail_case4
 
-    ; ---- case 6: len > dest_cap, expect -1 ----
+    ; ---- case 5: len > dest_cap, expect -1 ----
     push    small_size                      ; len (16)
     push    small_src                       ; src
     push    small_size - 1                  ; dest_cap (15) — one short
@@ -147,9 +133,9 @@ SYM(main):
     add     esp, 16
 
     cmp     eax, -1
-    jne     .fail_case6
+    jne     .fail_case5
 
-    ; ---- case 7: len == dest_cap (exact fit), expect 0 and 0xFF per byte ----
+    ; ---- case 6: len == dest_cap (exact fit), expect 0 and 0xFF per byte ----
     push    small_size                      ; len (16)
     push    small_src                       ; src
     push    small_size                      ; dest_cap (16) — exact fit
@@ -158,18 +144,18 @@ SYM(main):
     add     esp, 16
 
     cmp     eax, 0
-    jne     .fail_case7
+    jne     .fail_case6
 
     mov     ecx, small_size
     mov     esi, small_dst
-.verify_case7:
+.verify_case6:
     cmp     byte [esi], 0xFF
-    jne     .fail_case7
+    jne     .fail_case6
     inc     esi
     dec     ecx
-    jnz     .verify_case7
+    jnz     .verify_case6
 
-    ; ---- case 8: len < dest_cap, expect 0 and 0xFF per byte ----
+    ; ---- case 7: len < dest_cap, expect 0 and 0xFF per byte ----
     ; reuse large_dst/src but only XOR small_size bytes into it
     push    small_size                      ; len (16)
     push    large_src                       ; src
@@ -179,26 +165,26 @@ SYM(main):
     add     esp, 16
 
     cmp     eax, 0
-    jne     .fail_case8
+    jne     .fail_case7
 
     mov     ecx, small_size
     mov     esi, large_dst
-.verify_case8:
+.verify_case7:
     cmp     byte [esi], 0xFF
-    jne     .fail_case8
+    jne     .fail_case7
     inc     esi
     dec     ecx
-    jnz     .verify_case8
+    jnz     .verify_case7
 
-    ; ---- case 9: valid large buffer, expect 0 and 0xFF per byte ----
+    ; ---- case 8: valid large buffer, expect 0 and 0xFF per byte ----
     ; restore first 16 bytes of large_dst back to 0xBB (dirtied by case 8)
     mov     ecx, small_size
     mov     edi, large_dst
-.restore_case9:
+.restore_case8:
     mov     byte [edi], 0xBB
     inc     edi
     dec     ecx
-    jnz     .restore_case9
+    jnz     .restore_case8
 
     push    large_size                      ; len
     push    large_src                       ; src
@@ -208,18 +194,18 @@ SYM(main):
     add     esp, 16
 
     cmp     eax, 0
-    jne     .fail_case9
+    jne     .fail_case8
 
     mov     ecx, large_size
     mov     esi, large_dst
-.verify_case9:
+.verify_case8:
     cmp     byte [esi], 0xFF
-    jne     .fail_case9
+    jne     .fail_case8
     inc     esi
     dec     ecx
-    jnz     .verify_case9
+    jnz     .verify_case8
 
-    ; ---- case 10: dest == src (self XOR), expect 0 and all zeroed ----
+    ; ---- case 9: dest == src (self XOR), expect 0 and all zeroed ----
     push    self_size                       ; len
     push    self_buf                        ; src == dest
     push    self_size                       ; dest_cap
@@ -228,18 +214,18 @@ SYM(main):
     add     esp, 16
 
     cmp     eax, 0
-    jne     .fail_case10
+    jne     .fail_case9
 
     mov     ecx, self_size
     mov     esi, self_buf
-.verify_case10:
+.verify_case9:
     cmp     byte [esi], 0x00
-    jne     .fail_case10
+    jne     .fail_case9
     inc     esi
     dec     ecx
-    jnz     .verify_case10
+    jnz     .verify_case9
 
-    ; ---- case 11: unaligned dest (dest+1), expect 0 and 0xFF per byte ----
+    ; ---- case 10: unaligned dest (dest+1), expect 0 and 0xFF per byte ----
     push    align_size                      ; len
     push    align_src                       ; src
     push    align_size                      ; dest_cap
@@ -248,18 +234,18 @@ SYM(main):
     add     esp, 16
 
     cmp     eax, 0
-    jne     .fail_case11
+    jne     .fail_case10
 
     mov     ecx, align_size
     mov     esi, align_dst
-.verify_case11:
+.verify_case10:
     cmp     byte [esi], 0xFF
-    jne     .fail_case11
+    jne     .fail_case10
     inc     esi
     dec     ecx
-    jnz     .verify_case11
+    jnz     .verify_case10
 
-    ; ---- case 12: tail test (7 bytes), expect 0 and 0xFF per byte ----
+    ; ---- case 11: tail test (7 bytes), expect 0 and 0xFF per byte ----
     push    tail_size                       ; len (7)
     push    tail_src                        ; src
     push    tail_size                       ; dest_cap
@@ -268,18 +254,18 @@ SYM(main):
     add     esp, 16
 
     cmp     eax, 0
-    jne     .fail_case12
+    jne     .fail_case11
 
     mov     ecx, tail_size
     mov     esi, tail_dst
-.verify_case12:
+.verify_case11:
     cmp     byte [esi], 0xFF
-    jne     .fail_case12
+    jne     .fail_case11
     inc     esi
     dec     ecx
-    jnz     .verify_case12
+    jnz     .verify_case11
 
-    ; ---- case 13: zero src, dest must be unchanged (0xDD) ----
+    ; ---- case 12: zero src, dest must be unchanged (0xDD) ----
     push    zero_size                       ; len
     push    zero_src                        ; src (all zeros)
     push    zero_size                       ; dest_cap
@@ -288,16 +274,16 @@ SYM(main):
     add     esp, 16
 
     cmp     eax, 0
-    jne     .fail_case13
+    jne     .fail_case12
 
     mov     ecx, zero_size
     mov     esi, zero_dst
-.verify_case13:
+.verify_case12:
     cmp     byte [esi], 0xDD
-    jne     .fail_case13
+    jne     .fail_case12
     inc     esi
     dec     ecx
-    jnz     .verify_case13
+    jnz     .verify_case12
 
     ; ---- all cases passed ----
     xor     eax, eax
@@ -329,8 +315,6 @@ SYM(main):
 .fail_case11:   mov eax, 11
                 jmp .fail
 .fail_case12:   mov eax, 12
-                jmp .fail
-.fail_case13:   mov eax, 13
 
 .fail:
     pop     edi
