@@ -1,6 +1,6 @@
 # x86util
 
-A minimal x86 string and memory utility library in pure assembly — no dependencies, no OS calls. Can link anywhere.
+Tiny x86 utility library in pure assembly for memory and string operations — optimized, OS-independent, linkable anywhere.
 
 ---
 
